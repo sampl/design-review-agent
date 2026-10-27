@@ -8,6 +8,18 @@
   },
   "scripts": {
     "test": "node --test scripts/*.test.mjs",
-    "lint": "node --check scripts/designReview.mjs && node --check scripts/designReview.test.mjs"
+    "lint": "node --check scripts/designReview.mjs && node --check scripts/designReview.test.mjs && node --check scripts/browserProbe.mjs",
+    "probe:browser": "node scripts/browserProbe.mjs",
+    "format": "prettier --write action.yml README.md package.json scripts/*.mjs",
+    "format:check": "prettier --check action.yml README.md package.json scripts/*.mjs",
+    "spellcheck": "cspell --config cspell.config.yaml README.md action.yml scripts/*.mjs"
+  },
+  "dependencies": {
+    "@playwright/mcp": "0.0.80",
+    "playwright": "1.63.0-alpha-2026-08-31"
+  },
+  "devDependencies": {
+    "cspell": "9.6.2",
+    "prettier": "3.6.2"
   }
 }
