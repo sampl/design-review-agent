@@ -1,0 +1,82 @@
+name: Design review agent
+description: Run the design review agent and generate a downloadable HTML artifact.
+inputs:
+  openai-api-key:
+    description: OpenAI API key supplied from a GitHub Actions secret.
+    required: true
+  design-qa-source-file-path-to-check:
+    description: Nonempty source file relative to the existing repository checkout.
+    required: true
+  design-qa-artifact-directory-path:
+    description: Optional new directory for the HTML artifact; defaults to a unique runner temporary directory.
+    required: false
+    default: ""
+
+# Return a directory path on the same runner; the caller uploads its files separately.
+outputs:
+  design-qa-artifact-directory-path:
+    description: Absolute path containing the design review HTML artifact.
+    value: ${{ steps.renderDesignQaHtmlArtifact.outputs.design-qa-artifact-directory-path }}
+
+# This reusable Action supplies steps; the caller workflow chooses triggers and the runner.
+runs:
+  using: composite
+  steps:
+
+    # The customer workflow chooses the machine. We currently support Linux, so stop otherwise.
+    - name: Check supported runner
+      shell: bash
+      env:
+        SUPPORTED_RUNNER_OS: ${{ runner.os }}
+      run: test "$SUPPORTED_RUNNER_OS" = Linux
+
+    # Our helper is JavaScript, so make Node 24 available to run scripts/designReview.mjs.
+    - name: Set up Node.js
+      uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+      with:
+        node-version: "24"
+
+    # Prepare instructions, the expected response format, and temporary file paths for Codex.
+    # The instructions name the source file; Codex will read its contents itself.
+    - name: Prepare design review
+      id: prepareDesignReviewRun
+      shell: bash
+      env:
+        # Our downloaded Action code and the customer's checkout live in different directories.
+        DESIGN_REVIEW_ACTION_DIRECTORY_PATH: ${{ github.action_path }}
+        CUSTOMER_REPOSITORY_DIRECTORY_PATH: ${{ github.workspace }}
+        DESIGN_QA_SOURCE_FILE_PATH_TO_CHECK: ${{ inputs.design-qa-source-file-path-to-check }}
+        RUNNER_TEMPORARY_DIRECTORY_PATH: ${{ runner.temp }}
+        REQUESTED_DESIGN_QA_ARTIFACT_DIRECTORY_PATH: ${{ inputs.design-qa-artifact-directory-path }}
+      run: node "$DESIGN_REVIEW_ACTION_DIRECTORY_PATH/scripts/designReview.mjs" prepareDesignReviewRun "$CUSTOMER_REPOSITORY_DIRECTORY_PATH" "$DESIGN_QA_SOURCE_FILE_PATH_TO_CHECK" "$RUNNER_TEMPORARY_DIRECTORY_PATH" "$REQUESTED_DESIGN_QA_ARTIFACT_DIRECTORY_PATH" "$GITHUB_OUTPUT"
+
+    # Reuse upstream key proxy and privilege isolation; later steps cannot depend on sudo.
+    # Run Codex CLI with our prompt and answer format, saving its response for the next step.
+    - name: Run design review
+      uses: openai/codex-action@86365089eb2b84e0a8fb0717b304f8bdcb13b20e # v1.12
+      with:
+        openai-api-key: ${{ inputs.openai-api-key }}
+        # Codex runs against the customer repository at this directory path.
+        working-directory: ${{ github.workspace }}
+        # Upstream reads the prompt contents from this input file path.
+        # The wrapper pipes those contents into Codex CLI; it does not send the path as instructions.
+        prompt-file: ${{ steps.prepareDesignReviewRun.outputs.codexInputPromptFilePath }}
+        # This input file describes the required format of the Codex response.
+        output-schema-file: ${{ steps.prepareDesignReviewRun.outputs.codexInputResponseSchemaFilePath }}
+        # Codex writes its final response to this output file path only; future screenshots are separate artifact files.
+        # Browser tools must save them to disk with scoped output write permissions.
+        # Saving the CLI's answer is orchestration; read-only agent tools need no write access for it.
+        output-file: ${{ steps.prepareDesignReviewRun.outputs.codexOutputResponseFilePath }}
+        permission-profile: ":read-only"
+        safety-strategy: drop-sudo
+        codex-args: '["--ephemeral"]'
+
+    # Trusted orchestration writes the artifact after Codex has finished with read-only tools.
+    # Read Codex's saved answer, check it against the source, then create the HTML artifact.
+    - name: Create design review artifact
+      id: renderDesignQaHtmlArtifact
+      shell: bash
+      env:
+        DESIGN_REVIEW_ACTION_DIRECTORY_PATH: ${{ github.action_path }}
+        DESIGN_REVIEW_RUN_STATE_FILE_PATH: ${{ steps.prepareDesignReviewRun.outputs.designReviewRunStateFilePath }}
+      run: node "$DESIGN_REVIEW_ACTION_DIRECTORY_PATH/scripts/designReview.mjs" renderDesignQaHtmlArtifact "$DESIGN_REVIEW_RUN_STATE_FILE_PATH" "$GITHUB_OUTPUT"

@@ -1,0 +1,13 @@
+{
+  "name": "design-review-agent",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "node --test scripts/*.test.mjs",
+    "lint": "node --check scripts/designReview.mjs && node --check scripts/designReview.test.mjs"
+  }
+}
