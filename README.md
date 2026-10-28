@@ -22,6 +22,7 @@ jobs:
       # Install, build, start your application, and wait for readiness here.
       - uses: sampl/design-review-agent@main
         id: review
+        timeout-minutes: 10
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           app-url: http://127.0.0.1:4321
@@ -48,17 +49,20 @@ The example follows `main` for development. Pin the Action to a reviewed, publis
 - `source-scope`: repository-relative source directory; defaults to the whole checkout. Guides source inspection; it does not isolate filesystem access.
 - `viewports`: JSON array of 1–5 width/height objects, each dimension 240–3840; defaults to desktop 1440×900 and mobile 390×844.
 - `review-focus`: optional extra review instructions.
-- `timeout-minutes`: integer 1–30, default 10. Bounds the Codex process; allow additional job time for installation and packaging.
+- `timeout-minutes`: integer 1–30, default 10. Sets the requested model review budget; it does not enforce runtime. Set `timeout-minutes` on the caller's Action step for a hard limit.
 - `design-qa-artifact-directory-path`: optional new directory whose parent must exist. Defaults to a unique temporary directory. Existing destinations are rejected to avoid stale reports.
 - Outputs: `design-qa-artifact-directory-path` identifies the report or diagnostic directory; `review-status` is `complete`, `incomplete`, or `failed`.
 
 Findings, including severe findings, do not fail execution. Missing/invalid reports, browser/runtime failures, and timeouts fail execution. Coverage gaps remain visible as incomplete reviews. Upload the artifact even when the review step fails.
 
+The example limits the whole Action step to 10 minutes, including installation, review, and report packaging; the job limit remains 25 minutes. A platform timeout can interrupt finalization before any artifact path is returned, so a report or diagnostic artifact is not guaranteed on timeout.
+
 ## Execution
 
 - Runs entirely in the caller's job, reusing its checkout and server; no backend, clone, billing, or hosted viewer.
 - Uses the pinned official OpenAI Codex Action for the API proxy and privilege isolation. Codex CLI/proxy retain upstream's installation default.
-- The official Action drops sudo privileges. Complete browser installation and application setup first. A trusted launcher wraps the absolute installed Codex executable with a hard timeout; it cannot resolve itself through PATH.
+- Preparation links the disposable runner account's default `.codex` directory to the trusted temporary Codex home. This keeps proxy and browser configuration available when Ubuntu sudo drops `CODEX_HOME`. Existing files, directories, and symlinks at that default path cause preparation to fail; no existing configuration is replaced.
+- The official Action drops sudo privileges. Complete browser installation and application setup first.
 - Codex follows repository instructions and can delegate source inspection. Reviewers do not edit source or submit forms, make purchases, or change application data. Secrets, environment values/files, and credential registries are excluded from inspection.
 - Read-only browser evaluation measures observed geometry and scroll offsets. It must not fetch, navigate through code, submit forms, or mutate the DOM or application.
 - Playwright MCP 0.0.80 and its exact matching Chromium runtime are installed before privileges drop. The browser uses an isolated profile. Required MCP initialization fails clearly if browser tooling is unavailable.
@@ -72,7 +76,7 @@ Findings, including severe findings, do not fail execution. Missing/invalid repo
 
 1. Read this README and `action.yml` from the published Action repository. Stop if unavailable; use its actual documented interface.
 2. Read the caller's instructions and existing workflows. Identify the application, routes, relevant source directory, viewport sizes, and a working server command; ask for missing requirements.
-3. Add only `workflow_dispatch`, `contents: read`, a bounded job timeout, and checkout with credentials disabled. Install/build/start the app and wait for its URL before invoking the Action in the same job. Pin a reviewed, published Action SHA.
+3. Add only `workflow_dispatch`, `contents: read`, bounded Action-step and job timeouts, and checkout with credentials disabled. Install/build/start the app and wait for its URL before invoking the Action in the same job. Pin a reviewed, published Action SHA.
 4. Pass `${{ secrets.OPENAI_API_KEY }}`. Never inspect secret or environment values. Tell the user to set `OPENAI_API_KEY` in **Settings → Secrets and variables → Actions** themselves.
 5. Upload the artifact with the failure-aware condition above. Do not configure hosted report storage or automatic triggers.
 6. Validate configuration against the published Action interface. Explain any remaining user setup. Once available on the default branch, run via **Actions → Design review → Run workflow**, then download and extract the artifact.
@@ -80,8 +84,8 @@ Findings, including severe findings, do not fail execution. Missing/invalid repo
 ## Files
 
 - [action.yml](action.yml) — Composite Action inputs, browser installation, Codex execution, and report finalization.
-- [scripts/designReview.mjs](scripts/designReview.mjs) — Input validation, core requests, browser configuration, timeout launcher, and report or failure diagnostics.
-- [scripts/designReview.test.mjs](scripts/designReview.test.mjs) — Input, orchestration, timeout, and bundled-core report packaging tests.
+- [scripts/designReview.mjs](scripts/designReview.mjs) — Input validation, core requests, browser configuration, default account configuration, and report or failure diagnostics.
+- [scripts/designReview.test.mjs](scripts/designReview.test.mjs) — Input, orchestration, default account configuration, and bundled-core report packaging tests.
 - [scripts/browserProbe.mjs](scripts/browserProbe.mjs) — Local browser probe for read-only measurements, inline PNG responses, and identical saved screenshots without a model or API key.
 - [scripts/fixtures/browser-probe.png](scripts/fixtures/browser-probe.png) — Captured browser fixture for the bundled-core report packaging test.
 - [package.json](package.json) and [package-lock.json](package-lock.json) — Runtime requirements, commands, and pinned dependencies.
@@ -94,7 +98,7 @@ Update this list when files are added, moved, or removed.
 ## Development
 
 - Node 24; `npm ci` installs exact locked dependencies.
-- `npm test`: input/path validation, orchestration, timeout launcher, and failure reporting without API calls.
+- `npm test`: input/path validation, orchestration, and failure reporting without API calls.
 - `npm run lint`: JavaScript syntax checks. Runtime JavaScript has no separate type checker.
 - `npm run format:check` and `npm run spellcheck`: formatting and spelling.
 - `npx playwright install chromium`, then `npm run probe:browser`: local fixture verifies that MCP returns PNG pixels and an identical saved screenshot; no model or API key needed.
@@ -102,6 +106,6 @@ Update this list when files are added, moved, or removed.
 
 ## TODO
 
-- Validate the complete GitHub run against Directed's configured application; inspect the downloaded report and evidence, record runtime/browser/model limitations, and pin the validated published Action revision.
+- Validate the complete GitHub run against a configured application; inspect the downloaded report and evidence, record runtime/browser/model limitations, and pin the validated published Action revision.
 - Pin a verified Codex CLI and API proxy version after the complete runner validation.
 - Add opt-in PR/push triggers and authentication setup only after the manual trusted-code flow is proven.

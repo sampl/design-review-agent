@@ -1,7 +1,8 @@
 import {
   appendFile,
-  chmod,
   mkdir,
+  lstat,
+  symlink,
   mkdtemp,
   readFile,
   realpath,
@@ -10,6 +11,7 @@ import {
 } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import path from "node:path";
+import { userInfo } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const ACTION_DIRECTORY = path.resolve(
@@ -60,6 +62,23 @@ export async function resolveSourceDirectory(repositoryDirectory, sourceScope) {
   if (!(await stat(sourcePath)).isDirectory())
     throw new Error("source-scope must name a directory");
   return sourcePath;
+}
+
+export async function linkDefaultCodexHome({ accountHome, codexHome }) {
+  const defaultCodexHome = path.join(accountHome, ".codex");
+  // Ubuntu's sudo-rs may discard CODEX_HOME despite sudo -E. Keep Codex's
+  // account-home fallback pointed at the same trusted proxy and browser config.
+  try {
+    await lstat(defaultCodexHome);
+    throw new Error(
+      "The account's default .codex path already exists; use a fresh disposable runner",
+    );
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  // symlink is exclusive: a competing creation after lstat must fail, never overwrite.
+  await symlink(codexHome, defaultCodexHome, "dir");
+  return defaultCodexHome;
 }
 
 export function parseReviewInputs({
@@ -145,27 +164,11 @@ export function createBrowserConfiguration({
   return `[features]\nmulti_agent = true\n\n[mcp_servers.browser]\ncommand = "node"\nargs = ${JSON.stringify([browserCliPath, "--headless", "--isolated", "--browser", "chromium", "--image-responses", "allow", "--output-dir", evidenceDirectory])}\nrequired = true\nstartup_timeout_sec = 60\ntool_timeout_sec = 60\ndefault_tools_approval_mode = "approve"\nenabled_tools = ["browser_navigate", "browser_snapshot", "browser_evaluate", "browser_take_screenshot", "browser_resize", "browser_click", "browser_hover", "browser_press_key", "browser_wait_for", "browser_tabs", "browser_close", "browser_console_messages"]\n`;
 }
 
-export function createCodexLauncher(codexExecutablePath, timeoutMs) {
-  if (
-    !path.isAbsolute(codexExecutablePath) ||
-    /[\r\n]/u.test(codexExecutablePath)
-  )
-    throw new Error("Codex executable must be an absolute path");
-  const quoteShell = (value) => `'${value.replaceAll("'", "'\\''")}'`;
-  // Resolve the installed CLI before adding our launcher to PATH; never search PATH here.
-  return `#!/bin/sh\nexec timeout --signal=TERM --kill-after=30s ${Math.ceil(timeoutMs / 1000)}s ${quoteShell(codexExecutablePath)} "$@"\n`;
-}
-
-export async function runCommand(
-  executable,
-  args,
-  { cwd, input, timeoutMs } = {},
-) {
+export async function runCommand(executable, args, { cwd, input } = {}) {
   return await new Promise((resolve, reject) => {
     const child = spawn(executable, args, {
       cwd,
       stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
-      timeout: timeoutMs,
     });
     let stdout = "";
     let stderr = "";
@@ -207,12 +210,12 @@ export async function prepareDesignReviewRun({
   appUrl,
   paths,
   sourceScope = ".",
+  accountHome = userInfo().homedir,
   viewports,
   reviewFocus,
   timeoutMinutes,
   requestedArtifactDirectory = "",
   outputsFile,
-  pathFile,
   coreCliPath = CORE_CLI_PATH,
   run = runCommand,
 }) {
@@ -244,12 +247,7 @@ export async function prepareDesignReviewRun({
     throw new Error("Artifact parent must exist");
   const evidenceDirectory = path.join(temporaryDirectory, "evidence");
   const codexHome = path.join(temporaryDirectory, "codex-home");
-  const launcherDirectory = path.join(temporaryDirectory, "bin");
-  await Promise.all([
-    mkdir(evidenceDirectory),
-    mkdir(codexHome),
-    mkdir(launcherDirectory),
-  ]);
+  await Promise.all([mkdir(evidenceDirectory), mkdir(codexHome)]);
   const promptFile = path.join(temporaryDirectory, "prompt.md");
   const schemaFile = path.join(temporaryDirectory, "schema.json");
   const responseFile = path.join(temporaryDirectory, "response.json");
@@ -280,17 +278,7 @@ export async function prepareDesignReviewRun({
     path.join(codexHome, "config.toml"),
     createBrowserConfiguration({ browserCliPath, evidenceDirectory }),
   );
-  // The global prefix names the real install target even before upstream installs Codex.
-  const globalPrefix = await run("npm", ["prefix", "--global"]);
-  const launcherFile = path.join(launcherDirectory, "codex");
-  await writeFile(
-    launcherFile,
-    createCodexLauncher(
-      path.join(globalPrefix, "bin/codex"),
-      reviewInputs.reviewTimeoutMs,
-    ),
-  );
-  await chmod(launcherFile, 0o755);
+  await linkDefaultCodexHome({ accountHome, codexHome });
   const state = {
     repositoryDirectory,
     artifactDirectory,
@@ -301,7 +289,6 @@ export async function prepareDesignReviewRun({
     coreCliPath,
   };
   await writeFile(stateFile, JSON.stringify(state));
-  await appendFile(pathFile, `${launcherDirectory}\n`);
   await publishOutputs(outputsFile, {
     promptFile,
     schemaFile,
@@ -368,11 +355,22 @@ export async function finalizeDesignReviewRun({
         : "incomplete";
   } catch (error) {
     reviewStatus = "failed";
-    runIssues.push({
-      severity: "error",
-      code: "report_generation_failed",
-      message: error.message,
-    });
+    const responseMissing =
+      error.code === "ENOENT" && error.path === state.responseFile;
+    runIssues.push(
+      responseMissing
+        ? {
+            severity: codexOutcome === "success" ? "error" : "warning",
+            code: "agent_response_missing",
+            message:
+              "Codex did not produce the required response. No report was generated.",
+          }
+        : {
+            severity: "error",
+            code: "report_generation_failed",
+            message: error.message,
+          },
+    );
   }
   await mkdir(state.artifactDirectory, { recursive: true });
   await writeFile(
@@ -402,7 +400,6 @@ async function main() {
       timeoutMinutes,
       requestedArtifactDirectory,
       outputsFile,
-      pathFile,
     ] = args;
     await prepareDesignReviewRun({
       repositoryDirectory,
@@ -415,7 +412,6 @@ async function main() {
       timeoutMinutes,
       requestedArtifactDirectory,
       outputsFile,
-      pathFile,
     });
   } else if (command === "finalize") {
     const [stateFile, codexOutcome, outputsFile] = args;

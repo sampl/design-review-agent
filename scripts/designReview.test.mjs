@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  chmod,
+  lstat,
   copyFile,
   mkdtemp,
   mkdir,
@@ -12,14 +12,15 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import {
   createBrowserConfiguration,
-  createCodexLauncher,
+  linkDefaultCodexHome,
   finalizeDesignReviewRun,
   parseReviewInputs,
   prepareDesignReviewRun,
   resolveSourceDirectory,
-  runCommand,
 } from "./designReview.mjs";
 
 const inputs = {
@@ -32,13 +33,15 @@ async function fixture() {
     await mkdtemp(path.join(os.tmpdir(), "review-test-")),
   );
   const repositoryDirectory = path.join(directory, "repository");
+  const accountHome = path.join(directory, "account-home");
+  await mkdir(accountHome);
   await mkdir(repositoryDirectory);
   await mkdir(path.join(repositoryDirectory, "src"));
   return {
     directory,
     repositoryDirectory,
+    accountHome,
     outputsFile: path.join(directory, "outputs"),
-    pathFile: path.join(directory, "paths"),
   };
 }
 
@@ -100,35 +103,6 @@ test("browser configuration returns images, uses isolated Chromium, and enables 
   );
 });
 
-test("launcher executes exact global Codex path, forwards args, and propagates timeout", async (context) => {
-  const { directory } = await fixture();
-  const fakeCodex = path.join(directory, "real codex");
-  const launcher = path.join(directory, "codex");
-  await writeFile(fakeCodex, '#!/bin/sh\nprintf "%s\\n" "$@"\n');
-  await chmod(fakeCodex, 0o755);
-  await writeFile(launcher, createCodexLauncher(fakeCodex, 1000));
-  await chmod(launcher, 0o755);
-  const availableTimeout = await runCommand("sh", [
-    "-c",
-    "command -v timeout || true",
-  ]);
-  if (!availableTimeout) {
-    context.skip("GNU timeout is exercised on the supported Linux runner");
-    assert.match(
-      await readFile(launcher, "utf8"),
-      /timeout --signal=TERM --kill-after=30s 1s/,
-    );
-    assert.match(await readFile(launcher, "utf8"), /real codex/);
-    return;
-  }
-  assert.equal(
-    await runCommand(launcher, ["exec", "--ephemeral", "two words"]),
-    "exec\n--ephemeral\ntwo words",
-  );
-  await writeFile(fakeCodex, "#!/bin/sh\nsleep 5\n");
-  await assert.rejects(runCommand(launcher, []), /124/);
-});
-
 test("prepare passes generic request to bundled core and keeps raw files outside artifact", async () => {
   const fixturePaths = await fixture();
   const calls = [];
@@ -139,7 +113,7 @@ test("prepare passes generic request to bundled core and keeps raw files outside
     runnerTemporaryDirectory: fixturePaths.directory,
     run: async (executable, args) => {
       calls.push([executable, args]);
-      return args[0] === "prefix" ? "/global" : "";
+      return "";
     },
   });
   const request = JSON.parse(
@@ -152,10 +126,12 @@ test("prepare passes generic request to bundled core and keeps raw files outside
   assert.deepEqual(request.scope, ["/", "/services/"]);
   assert.equal(request.reviewTimeoutMs, 600000);
   assert.equal(calls[0][1][1], "prepare");
-  assert.match(
-    await readFile(path.join(state.temporaryDirectory, "bin/codex"), "utf8"),
-    /'\/global\/bin\/codex'/,
+  assert.equal(
+    await realpath(path.join(fixturePaths.accountHome, ".codex")),
+    path.join(state.temporaryDirectory, "codex-home"),
   );
+  const preparedOutputs = await readFile(fixturePaths.outputsFile, "utf8");
+  assert.match(preparedOutputs, /codexHome=/);
   assert.equal(path.dirname(state.responseFile), state.temporaryDirectory);
   await assert.rejects(
     readFile(path.join(state.artifactDirectory, "index.html")),
@@ -208,6 +184,14 @@ test("execution failure always publishes a diagnostic artifact and never claims 
     ),
   );
   assert.equal(diagnostics.runIssues[0].code, "agent_execution_failed");
+  assert.equal(diagnostics.runIssues[1].code, "agent_response_missing");
+  assert.equal(diagnostics.runIssues[1].severity, "warning");
+  assert.ok(
+    !diagnostics.runIssues.some(
+      (issue) => issue.code === "report_generation_failed",
+    ),
+  );
+  assert.ok(!JSON.stringify(diagnostics).includes("ENOENT"));
   assert.match(
     await readFile(fixturePaths.outputsFile, "utf8"),
     /review-status=failed/,
@@ -338,4 +322,61 @@ test("bundled core prepares and packages a real screenshot with the existing vie
     ),
     imageBytes,
   );
+});
+
+test("default account config resolves through trusted home when CODEX_HOME is cleared", async () => {
+  const { directory, accountHome } = await fixture();
+  const codexHome = path.join(directory, "trusted-codex-home");
+  await mkdir(codexHome);
+  const expectedConfiguration =
+    'model_provider = "test-responses-proxy"\n' +
+    createBrowserConfiguration({
+      browserCliPath: "/action/browser.js",
+      evidenceDirectory: "/tmp/evidence",
+    });
+  await writeFile(path.join(codexHome, "config.toml"), expectedConfiguration);
+  const alias = await linkDefaultCodexHome({ accountHome, codexHome });
+  assert.ok((await lstat(alias)).isSymbolicLink());
+  assert.equal(await realpath(alias), codexHome);
+  // A fresh explicit environment emulates sudo dropping CODEX_HOME without
+  // reading or forwarding any real environment values or credentials.
+  const { stdout } = await promisify(execFile)(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      'import { readFile } from "node:fs/promises"; import { homedir } from "node:os"; import path from "node:path"; process.stdout.write(await readFile(path.join(homedir(), ".codex", "config.toml"), "utf8"));',
+    ],
+    { env: { HOME: accountHome } },
+  );
+  assert.equal(stdout, expectedConfiguration);
+});
+
+test("default account alias refuses existing files, directories, and symlinks without changing them", async () => {
+  for (const existingKind of [
+    "file",
+    "directory",
+    "symlink",
+    "broken-symlink",
+  ]) {
+    const { directory, accountHome } = await fixture();
+    const codexHome = path.join(directory, "trusted-codex-home");
+    await mkdir(codexHome);
+    const alias = path.join(accountHome, ".codex");
+    if (existingKind === "file")
+      await writeFile(alias, "existing configuration");
+    if (existingKind === "directory") await mkdir(alias);
+    if (existingKind === "symlink") await symlink(codexHome, alias, "dir");
+    if (existingKind === "broken-symlink")
+      await symlink(path.join(directory, "missing"), alias, "dir");
+    const before = await lstat(alias);
+    await assert.rejects(
+      linkDefaultCodexHome({ accountHome, codexHome }),
+      /already exists/,
+    );
+    const after = await lstat(alias);
+    assert.equal(after.ino, before.ino);
+    if (existingKind === "file")
+      assert.equal(await readFile(alias, "utf8"), "existing configuration");
+  }
 });

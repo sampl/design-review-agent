@@ -62,4 +62,4 @@ Shared review rubric for agents and the future hosted evaluator. These instructi
 
 ### Friendly alpha
 
-- Validate that future runner-backed local, CI, and hosted reviews apply the same prompt and rubric while documenting their different inspection capabilities and coverage.
+- Validate that local, CI, and hosted reviews apply the same prompt and rubric while documenting their different inspection capabilities and coverage.

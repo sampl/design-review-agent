@@ -20,7 +20,7 @@ inputs:
     description: Optional additional review focus.
     default: ""
   timeout-minutes:
-    description: Maximum agent execution time, from 1 to 30 minutes.
+    description: Requested model review budget, from 1 to 30 minutes; the caller step timeout enforces runtime.
     default: "10"
   design-qa-artifact-directory-path:
     description: Optional new report directory whose parent already exists.
@@ -69,7 +69,7 @@ runs:
         DESIGN_QA_REVIEW_FOCUS: ${{ inputs.review-focus }}
         DESIGN_QA_TIMEOUT_MINUTES: ${{ inputs.timeout-minutes }}
         REQUESTED_DESIGN_QA_ARTIFACT_DIRECTORY_PATH: ${{ inputs.design-qa-artifact-directory-path }}
-      run: node "$DESIGN_REVIEW_ACTION_DIRECTORY_PATH/scripts/designReview.mjs" prepare "$CUSTOMER_REPOSITORY_DIRECTORY_PATH" "$RUNNER_TEMPORARY_DIRECTORY_PATH" "$DESIGN_QA_APP_URL" "$DESIGN_QA_PATHS" "$DESIGN_QA_SOURCE_SCOPE" "$DESIGN_QA_VIEWPORTS" "$DESIGN_QA_REVIEW_FOCUS" "$DESIGN_QA_TIMEOUT_MINUTES" "$REQUESTED_DESIGN_QA_ARTIFACT_DIRECTORY_PATH" "$GITHUB_OUTPUT" "$GITHUB_PATH"
+      run: node "$DESIGN_REVIEW_ACTION_DIRECTORY_PATH/scripts/designReview.mjs" prepare "$CUSTOMER_REPOSITORY_DIRECTORY_PATH" "$RUNNER_TEMPORARY_DIRECTORY_PATH" "$DESIGN_QA_APP_URL" "$DESIGN_QA_PATHS" "$DESIGN_QA_SOURCE_SCOPE" "$DESIGN_QA_VIEWPORTS" "$DESIGN_QA_REVIEW_FOCUS" "$DESIGN_QA_TIMEOUT_MINUTES" "$REQUESTED_DESIGN_QA_ARTIFACT_DIRECTORY_PATH" "$GITHUB_OUTPUT"
     # Reuse upstream key proxy and privilege isolation; later steps cannot depend on sudo.
     - name: Run design review
       id: review
