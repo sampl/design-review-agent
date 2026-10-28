@@ -2,6 +2,7 @@
   "name": "design-review-agent",
   "version": "0.0.1",
   "private": true,
+  "packageManager": "pnpm@9.15.9",
   "type": "module",
   "engines": {
     "node": ">=24"
