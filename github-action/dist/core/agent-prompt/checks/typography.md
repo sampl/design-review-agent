@@ -1,6 +1,7 @@
 # Typography
 
-- Review readability, scale, line length, weight, and consistent text roles.
+- Review scale, line length, weight, and consistent text roles.
+- Review type readability
 - Check that headings, body text, labels, and supporting text are easy to distinguish.
 - Check long content and text resizing for wrapping, clipping, and lost meaning.
 - Match design system

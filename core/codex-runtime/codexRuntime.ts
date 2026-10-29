@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
 import type { PreparedReview } from "../run-review/reviewLifecycle.ts";
 import { ReviewError } from "../run-review/reviewError.ts";
+import { resolveAssetRoot } from "../run-review/assetRoot.ts";
 
 const require = createRequire(import.meta.url);
 export const runtimeRequirements = JSON.parse(
@@ -268,6 +269,13 @@ export async function executeCodex(
         `model_providers.design-review-proxy=${toml({ name: "Design review Responses proxy", base_url: proxy.href, wire_api: "responses" })}`,
       );
     }
+    const runtimeInstructions = await readFile(
+      new URL(
+        "agent-prompt/codex-runtime-instructions.md",
+        await resolveAssetRoot(),
+      ),
+      "utf8",
+    );
     await runProcess(
       executable,
       [
@@ -293,7 +301,7 @@ export async function executeCodex(
       signal,
       {
         cwd: workingDirectory,
-        input: `${prepared.prompt}\n\n## Source and browser runtime instructions\nYour working root is a temporary execution directory, not the app checkout. Inspect the absolute sourceDirectory in the supplied request. Read its applicable ancestor and source AGENTS.md instructions and product READMEs before static analysis. Do not load or execute source project Codex configuration, hooks, or policy files. With Playwright MCP browser_take_screenshot, omit filename to receive both image pixels and its saved path. Copy each referenced PNG into evidenceDirectory when needed; inspect actual returned images. Use browser_evaluate only for read-only measurements. Never mutate application data, submit forms, or fetch external data through evaluation.`,
+        input: `${prepared.prompt}\n\n${runtimeInstructions.trimEnd()}`,
       },
     );
     try {

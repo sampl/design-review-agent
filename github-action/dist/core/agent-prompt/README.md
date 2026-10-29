@@ -18,6 +18,8 @@ Define how the agent reviews a product and what it is allowed to inspect. The ag
 
 ## Important files
 
+- `review-template.md` — Complete lifecycle prompt, with `{{request}}`, `{{guidance}}`, and `{{responseSchema}}` slots filled in one pass so supplied content is preserved literally.
+- `codex-runtime-instructions.md` — Source inspection and browser instructions appended by the Codex runtime.
 - `agent-prompt.md` — Shared procedure for reading inputs, inspecting the product, gathering evidence, and returning the report and execution issues.
 
 ## Testing
