@@ -11,9 +11,9 @@
     "test": "node --test scripts/*.test.mjs",
     "lint": "node --check scripts/designReview.mjs && node --check scripts/designReview.test.mjs && node --check scripts/browserProbe.mjs && node --check scripts/isolate.ts",
     "probe:browser": "node scripts/browserProbe.mjs",
-    "format": "prettier --write action.yml README.md package.json scripts/*.mjs scripts/isolate.ts",
-    "format:check": "prettier --check action.yml README.md package.json scripts/*.mjs scripts/isolate.ts",
-    "spellcheck": "cspell --config cspell.config.yaml README.md action.yml scripts/*.mjs scripts/isolate.ts"
+    "format": "prettier --write action.yml README.md DEVELOPERS.md package.json scripts/*.mjs scripts/isolate.ts",
+    "format:check": "prettier --check action.yml README.md DEVELOPERS.md package.json scripts/*.mjs scripts/isolate.ts",
+    "spellcheck": "cspell --config cspell.config.yaml README.md DEVELOPERS.md action.yml scripts/*.mjs scripts/isolate.ts"
   },
   "dependencies": {
     "@playwright/mcp": "0.0.80",
