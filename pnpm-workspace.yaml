@@ -1,0 +1,6 @@
+packages:
+  - core
+  - cli
+  - github-action
+onlyBuiltDependencies:
+  - esbuild

@@ -1,4 +1,3 @@
-dist/
-scripts/vendor/
-package-lock.json
+**/dist/
+github-action/vendor/
 pnpm-lock.yaml

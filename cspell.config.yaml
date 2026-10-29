@@ -3,23 +3,49 @@ language: en
 files:
   - "**/*.{md,yml,yaml,json,js,mjs,cjs,ts}"
 ignorePaths:
-  - node_modules/
-  - dist/
-  - scripts/vendor/
-  - package-lock.json
+  - "**/node_modules/**"
+  - "**/dist/**"
+  - github-action/vendor/
   - pnpm-lock.yaml
+ignoreRegExpList:
+  - '/"[^"\n]*%[^"\n]*"/g'
 words:
-  - lockfiles
-  - sampl
-  - viewports
-  - sigusr
-  - privs
-  - setpriv
-  - unreviewed
+  - Ajv
+  - IDAT
+  - IEND
+  - IHDR
+  - LOGNAME
+  - Northstar
+  - SHELLOPTS
+  - ajv
+  - bookmarkable
+  - checkmark
+  - checkmarks
+  - cspell
+  - describedby
   - esac
   - getent
+  - haspopup
+  - hoverable
+  - jiti
+  - labelledby
+  - lockfiles
+  - mkdtemp
   - nogroup
-  - reuid
+  - nonblank
+  - nonvisual
+  - noopener
+  - noreferrer
+  - nums
+  - pnpm
+  - privs
   - regid
-  - LOGNAME
-  - SHELLOPTS
+  - reuid
+  - runIssues
+  - sampl
+  - setpriv
+  - sigusr
+  - tseslint
+  - unreviewed
+  - viewports
+  - esbuild

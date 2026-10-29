@@ -8,15 +8,14 @@
     "node": ">=24"
   },
   "scripts": {
-    "test": "node --test scripts/*.test.mjs",
+    "test": "vitest run",
+    "ts": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "spellcheck": "cspell --config cspell.config.yaml"
-  },
-  "dependencies": {
-    "@playwright/mcp": "0.0.80",
-    "playwright": "1.63.0-alpha-2026-08-31"
+    "spellcheck": "cspell --config cspell.config.yaml",
+    "build:action": "node github-action/build-scripts/buildBundle.ts",
+    "build:viewer": "pnpm --filter design-qa-tool-core build:viewer"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -24,6 +23,11 @@
     "eslint": "10.13.0",
     "globals": "17.13.0",
     "prettier": "3.6.2",
-    "typescript-eslint": "8.72.1"
+    "typescript-eslint": "8.72.1",
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.24.2",
+    "serve": "14.2.6",
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.8"
   }
 }

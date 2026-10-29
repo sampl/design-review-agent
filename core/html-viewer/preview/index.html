@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Design QA viewer preview</title>
+    <script src="./preview.js" defer></script>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --preview-ink: light-dark(#273243, #e6e9ee);
+        --preview-page: light-dark(#eef0f4, #15181d);
+        --preview-panel: light-dark(#fff, #1c2027);
+        --preview-line: light-dark(#cdd3dd, #343b46);
+        --preview-hover: light-dark(#fafbfc, #20242b);
+        --preview-muted: light-dark(#657080, #a1aab8);
+        --preview-focus: light-dark(#3457c1, #a6baff);
+        --preview-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+        font:
+          12px/1.5 system-ui,
+          sans-serif;
+        color: var(--preview-ink);
+        background: var(--preview-page);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        height: 100dvh;
+        display: flex;
+        flex-direction: column;
+      }
+      header {
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--preview-line);
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+      select {
+        font: inherit;
+        appearance: none;
+        padding: 6px 32px 6px 10px;
+        border: 1px solid var(--preview-line);
+        border-radius: 6px;
+        color: inherit;
+        background-color: var(--preview-panel);
+      }
+      .select-control {
+        position: relative;
+        display: inline-block;
+      }
+      .select-control::after {
+        content: "";
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 14px;
+        height: 14px;
+        background-color: var(--preview-muted);
+        mask: var(--preview-chevron) center / contain no-repeat;
+        pointer-events: none;
+      }
+      select:focus-visible,
+      a:focus-visible {
+        outline: 3px solid var(--preview-focus);
+        outline-offset: 3px;
+      }
+      select:hover {
+        background-color: var(--preview-hover);
+      }
+      a {
+        color: inherit;
+      }
+      iframe {
+        border: 0;
+        width: 100%;
+        flex: 1;
+        min-height: 0;
+      }
+      @media (max-width: 600px) {
+        header {
+          padding: 8px;
+          gap: 8px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="select-control"
+        ><select id="scenario" aria-label="Scenario"></select
+      ></span>
+      <a id="standalone" target="_blank" rel="noopener">Open report ↗</a>
+    </header>
+    <iframe
+      id="report-frame"
+      title="Sample report viewer"
+      allow="clipboard-write"
+    ></iframe>
+  </body>
+</html>

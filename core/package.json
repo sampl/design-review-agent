@@ -1,0 +1,21 @@
+{
+  "name": "design-qa-tool-core",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./report": "./report-format/index.ts",
+    ".": "./index.ts"
+  },
+  "scripts": {
+    "build:viewer": "node html-viewer/preview/build.ts",
+    "preview": "pnpm build:viewer && serve dist/preview --listen tcp://127.0.0.1:4175 --no-port-switching --no-clipboard --config html-viewer/preview/serve.json",
+    "probe:browser": "node codex-runtime/browserProbe.ts"
+  },
+  "dependencies": {
+    "@playwright/mcp": "0.0.80",
+    "ajv": "^8.18.0",
+    "ajv-formats": "^2.1.1",
+    "json-schema-to-ts": "^3.1.1"
+  }
+}

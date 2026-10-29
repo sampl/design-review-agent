@@ -1,6 +1,6 @@
 # Developing the design review agent
 
-This guide is for contributors to this Github Action. To set it up in another repository, follow [README.md](README.md).
+This repository owns the review engine, local CLI, local testing skill, and GitHub Action. See [README.md](README.md) for module entry points and the [Action README](github-action/README.md) for workflow setup.
 
 ## Architecture
 
@@ -23,7 +23,7 @@ Everything runs in your GitHub job. The browser can reach localhost because it r
 - The review follows repository instructions and can delegate source inspection. It does not edit source, submit forms, make purchases, or change app data. Environment values/files and credential stores are excluded from inspection.
 - Browser evaluation is limited to read-only measurements, such as geometry and scroll offsets. It must not fetch, navigate through code, submit forms, or change the page or app.
 - Screenshots must reach the model as actual image pixels. With the pinned MCP version, screenshot calls omit `filename` so the tool returns inline image content and saves an automatically named evidence file. Providing `filename` suppresses those inline images. Text or accessibility snapshots alone are not sufficient visual evidence.
-- Core is generated from the Directed monorepo and committed in `dist/core/`, including its instructions, schema, validator, and viewer. The Action does not fetch core source during a run.
+- Core is built from local source and committed in `github-action/dist/core/`, including its instructions, schema, validator, and viewer. The Action does not fetch core source during a run.
 
 ### Data and permissions
 
@@ -31,55 +31,50 @@ Everything runs in your GitHub job. The browser can reach localhost because it r
 - Raw model output and working orchestration files stay outside uploaded artifacts. Valid reports contain structured JSON and relative screenshot files; execution diagnostics are separate in `run-status.json`. A timeout must not become a successful empty report.
 - Run manually on trusted code with repository write access. Keep the key away from untrusted pull requests. The source scope guides inspection; it does not isolate filesystem access. Browser instructions and tool configuration are not complete isolation guarantees.
 
-### Files
+### Modules
 
-Shared review rules, defaults, browser configuration, evidence checks, and report generation belong in Directed’s `design-qa-tool-core` package. The scripts below stay here because they connect that engine to the GitHub runner.
+- [Core](core/README.md) owns shared review rules, defaults, browser execution, validation, and report generation.
+- [CLI](cli/README.md) provides checkout-based local review commands.
+- [Skill](skill/README.md) gathers inputs and presents CLI results.
+- [GitHub Action](github-action/README.md) owns workflow inputs, runner setup, isolation, outputs, and its committed runtime build.
 
-- [README.md](README.md) — Setup and configuration for people and agents using this Action in their own repositories.
-- [DEVELOPERS.md](DEVELOPERS.md) — Contributor setup, architecture, validation, publishing, and roadmap.
-- [action.yml](action.yml) — Composite Action inputs, environment/authentication setup, isolated core invocation, and outputs.
-- [scripts/githubActionAdapter.mjs](scripts/githubActionAdapter.mjs) — Translates GitHub string inputs, resolves checkout-relative source paths, reads authentication proxy metadata, calls core, and writes Action outputs and failure diagnostics. Keep GitHub-specific limits here; consume core’s shared defaults and implement shared review behavior in core. Update `action.yml` and adapter tests together when changing the interface.
-- [scripts/githubActionAdapter.test.mjs](scripts/githubActionAdapter.test.mjs) — Tests input/path handling, core invocation, diagnostics, cancellation, runtime/default compatibility, and pinned upstream isolation code. Run `npm test` after adapter or workflow changes. Keep review-engine tests in core.
-- [scripts/isolate.ts](scripts/isolate.ts) — Launches the adapter after removing runner privileges. Install dependencies, browsers, and authentication first; run this only on a fresh disposable Linux runner. It changes host permissions for the rest of the job, so it belongs here rather than in core or the local CLI. Review changes with the upstream helpers and isolation tests.
-- [scripts/vendor/openai-codex-action/dropSudo.ts](scripts/vendor/openai-codex-action/dropSudo.ts) — Vendored OpenAI implementation that removes sudo access and restricts privileged service sockets. Preserve provenance and minimal adaptations; review upgrades alongside `isolate.ts`, `linuxCredentials.ts`, and the pinned regression hashes.
-- [scripts/vendor/openai-codex-action/linuxCredentials.ts](scripts/vendor/openai-codex-action/linuxCredentials.ts) — Captures and validates the runner’s user/group IDs so isolation accounts for its original privileges. Maintain it with `dropSudo.ts` and update the upstream regression hashes only after reviewing changes.
-- [scripts/vendor/openai-codex-action/LICENSE](scripts/vendor/openai-codex-action/LICENSE) — License accompanying the copied OpenAI code. Preserve it with the vendored files.
-- [dist/core/](dist/core/) — Generated shared review engine, rubric, schema, viewer, and source manifest. Never edit these files manually; regenerate them from the monorepo using the [deployment instructions](#deployment).
-
-Update this list when files are added, moved, or removed.
+Keep module and submodule READMEs alongside their code. Shared contributor tooling belongs at the repository root.
 
 ### Upstream isolation code
 
 - The vendored `dropSudo.ts` and `linuxCredentials.ts`, plus the root/setpriv shell sequence in `isolate.ts`, come from [OpenAI Codex Action commit 86365089eb2b84e0a8fb0717b304f8bdcb13b20e](https://github.com/openai/codex-action/tree/86365089eb2b84e0a8fb0717b304f8bdcb13b20e).
 - The vendored source changes only the explicit `.ts` import and type-only import needed by Node 24. Our launcher runs the core adapter instead of upstream's Codex invocation, with an explicit Node path and the debugger option disabled.
-- Tests pin the source and shell-sequence hashes. Review and update them together when upgrading upstream, and preserve the included [Apache license](scripts/vendor/openai-codex-action/LICENSE).
+- Tests pin the source and shell-sequence hashes. Review and update them together when upgrading upstream, and preserve the included [Apache license](github-action/vendor/openai-codex-action/LICENSE).
 - Local unit tests do not execute privileged account/socket changes. Those changes are part of the real disposable-runner workflow; a successful run does not establish every isolation or failure case.
 
 ## Development
 
-- Use Node 24. Run `npm ci` to install the locked dependencies.
-- `npm test` checks GitHub input/output handling and the pinned isolation setup without API calls. Core owns the review-engine and report-packaging unit tests.
-- `npm run lint` checks JavaScript and TypeScript with ESLint's recommended rules. Node 24 runs the small TypeScript isolation entry point directly.
-- `npm run format:check` and `npm run spellcheck` check formatting and spelling.
-- `npm run format` applies formatting. These tools discover files automatically; their configurations exclude generated `dist/` and upstream `scripts/vendor/` code. Formatting and spelling also exclude dependency lockfiles.
+- Use Node 24 and pnpm 9.15.9. Run `pnpm install --frozen-lockfile` from the repository root.
+- One workspace lockfile and root development dependencies serve every module. Core, CLI, and Action manifests own their runtime dependencies and module-specific commands.
+- `pnpm test` runs all core, CLI, viewer, and Action unit tests through Vitest without model calls.
+- `pnpm ts`, `pnpm lint`, `pnpm format:check`, and `pnpm spellcheck` check the workspace. `pnpm format` applies formatting.
+- The single root TypeScript configuration covers handwritten TypeScript, including browser code and tests. Generated output and vendored helpers are excluded from ordinary checks; dedicated Action tests check vendor integrity.
+- `pnpm build:viewer` builds viewer assets and synthetic development previews. `pnpm build:action` generates the committed Action runtime.
+- Keep packages private. CLI and skill installation and package publication are deferred; local testing uses this checkout.
 
 ## Testing
 
 - On October 28, 2026, the shared runtime completed a real local Codex review with delegated source inspection, six desktop/mobile screenshots, and a packaged report. All ten tracked runtime processes exited afterward.
 - On October 29, 2026, the user reported that the GitHub Action ran successfully. Downloaded-report usability, failure recovery, and timeout behavior still need explicit acceptance checks.
 
+## Migration provenance
+
+- Core, CLI, and skill files were moved as a current-file snapshot from Directed revision `e1414243a74000fc42bd10214a1b02bb38d4f166`; Git history was not imported.
+- Directed retains the cloud service, marketing website, and business planning. Future cloud integration should consume a versioned core package once distribution is designed.
+
 ## Deployment
 
-- Before publishing, export core into `dist/core/` from the monorepo. Commit the generated bundle and manifest together; do not edit generated files by hand.
+- Run `pnpm build:action`, inspect the generated diff and manifest, and commit the runtime together with source changes. Never edit generated files by hand.
+- Consumers use `sampl/design-review-agent/github-action@…`. The earlier root-level Action path does not exist in new revisions.
 
 ## TODO
 
 ### Personal prototype
 
-- Record the tested GitHub workflow and Action revision, inspect the downloaded/extracted report and screenshots, and pin the validated published revision.
-- Test failure and timeout handling on the real runner, and record runtime, browser, and model limitations.
-- Rename this repository to `design-review-github-action` later; update references and published setup instructions together.
-
-### Friendly alpha
-
-- Add opt-in PR/push triggers and app authentication only after the manual trusted-code flow is established.
+- Verify the relocated Action and frozen production dependency installation on a disposable runner. Check report delivery, failure recovery, and timeout behavior.
+- Record the validated workflow and Action revision before recommending a published commit.
