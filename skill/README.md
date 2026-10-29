@@ -17,7 +17,3 @@ This is our local testing entry point for the same flow used by the GitHub Actio
 ## Testing
 
 - Validate skill metadata and links
-
-## TODO
-
-- Design standalone skill installation with a compatible CLI and core. Installation is not available yet.
