@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import {
+  installBrowser,
   ReviewError,
   runReview,
   reviewDefaults,
@@ -14,6 +15,10 @@ const HELP = `Design review
 
 Run from the repository checkout with:
   pnpm --filter design-review-agent-cli review --app-url URL --source PATH --output NEW_PATH
+  pnpm --filter design-review-agent-cli review install-browser
+
+Commands:
+  install-browser           Install the pinned Chromium browser (no review required)
 
 Required:
   --app-url URL              Running HTTP(S) application
@@ -39,6 +44,7 @@ type CliContext = {
   write: (message: string) => void;
   signal?: AbortSignal;
   review?: typeof runReview;
+  installBrowser?: typeof installBrowser;
 };
 
 function viewportFrom(value: string) {
@@ -60,6 +66,19 @@ export async function runCli(
   let evidenceDirectory: string | undefined;
   let ownsOutput = false;
   try {
+    if (argumentsList[0] === "install-browser") {
+      const { values } = parseArgs({
+        args: argumentsList.slice(1),
+        allowPositionals: false,
+        options: { help: { type: "boolean", short: "h" } },
+      });
+      if (values.help) {
+        context.write(HELP);
+        return 0;
+      }
+      await (context.installBrowser ?? installBrowser)(context.signal);
+      return 0;
+    }
     const { values } = parseArgs({
       args: argumentsList,
       allowPositionals: false,

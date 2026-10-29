@@ -33,7 +33,7 @@ Start the app and wait until it is ready before using the CLI. The review reads 
 
 - Use Node 24 and install workspace dependencies with pnpm from the repository root.
 - Install a supported Codex CLI version listed in the [runtime README](../core/codex-runtime/README.md). Complete `codex login` yourself if needed; credentials do not belong in review flags or instructions.
-- Run `pnpm --filter design-review-agent-core exec node cli.ts install-browser` to install the pinned browser.
+- Run `pnpm --filter design-review-agent-cli review install-browser` to install the pinned browser.
 - The installer needs network access and permission to write to the operating system's browser cache. A restricted agent sandbox may need access granted outside the repository; otherwise cache-lock retries can stall installation. A normal terminal needs no special repository cache setup.
 - Run `pnpm --filter design-review-agent-core build:viewer` to build the report viewer.
 
@@ -44,6 +44,7 @@ Start the app and wait until it is ready before using the CLI. The review reads 
 - Repeat `--route /path` to choose pages. The default is `/`.
 - Repeat `--viewport WIDTHxHEIGHT` to choose screen sizes. Defaults are desktop 1440x900 and mobile 390x844.
 - Optional flags are `--focus <text>`, repeated `--documentation <path>`, `--github-repository <url>`, and `--timeout-minutes <integer>` from 1 to 60. The default agent budget is ten minutes; setup and report packaging take additional time.
+- `review install-browser` installs the pinned Chromium browser without starting a review or creating report files. Installation failures exit 1 and cancellation exits 130; installation output is forwarded to the terminal. Use `review install-browser --help` for help without installing.
 - Use `--help` to see the options without starting Codex, installing anything, or making a model request.
 
 ## Testing

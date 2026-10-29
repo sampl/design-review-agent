@@ -25,6 +25,7 @@ it("exposes the small review entry point, shared defaults, and typed failures", 
   assert.deepEqual(reviewDefaults.scope, ["/"]);
   assert.deepEqual(Object.keys(core).sort(), [
     "ReviewError",
+    "installBrowser",
     "reviewDefaults",
     "runReview",
   ]);

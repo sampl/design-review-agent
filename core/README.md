@@ -10,7 +10,7 @@ A review needs an environment for Codex CLI, storage for its assets, and a brows
 
 - **Agent execution:** the caller supplies a host or CI runner with Node 24, a supported Codex CLI, and authentication. Core starts Codex in a fresh temporary working directory, manages its time limit and cancellation, and cleans up its processes.
 - **Asset storage:** the caller chooses writable filesystem locations through `ReviewRequest.evidenceDirectory` and the `runReview` `outputDirectory` argument. Core creates the evidence directory and packages the report, screenshots, and viewer into the output directory. The caller handles any upload, hosting, or long-term retention.
-- **Browser access:** core configures Playwright MCP and starts a separate headless Chromium browser for each review so Codex can inspect the app and capture screenshots. Core provides the `install-browser` command to install the pinned browser runtime; the caller runs it during environment setup and supplies a reachable `appUrl`.
+- **Browser access:** core configures Playwright MCP and starts a separate headless Chromium browser for each review so Codex can inspect the app and capture screenshots. The local CLI provides the `install-browser` command to install the pinned browser runtime; the caller runs it during environment setup and supplies a reachable `appUrl`.
 
 ## Architecture
 
@@ -20,11 +20,7 @@ A review needs an environment for Codex CLI, storage for its assets, and a brows
 - Core runs read-only and returns findings plus execution issues and coverage limitations. It does not ask follow-up questions during a run.
 - The marketing website points users to the Action. It does not run reviews or depend on core.
 - This repository owns core and its local CLI, skill, and GitHub Action. Directed retains the cloud service and marketing website. The Action commits a generated core build inside its own module.
-- The public entry point and automation commands stay at the package root. Internal folder names can change without changing the public report import or the locations of files distributed with the Action.
-
-## Important files
-
-- `cli.ts` — Automation commands for running reviews, installing the browser, preparing inputs, checking responses, and packaging reports.
+- The public entry point stays at the package root. Internal folder names can change without changing the public report import or the locations of files distributed with the Action.
 
 ## API
 
@@ -32,20 +28,21 @@ Call `runReview` for a complete review. Core chooses how to run the agent and co
 
 - `runReview(request: ReviewRequest, outputDirectory: string, options?: ReviewOptions): Promise<ReviewResult>` prepares the review, runs Codex, validates its response, and saves the report.
 - `ReviewRequest` requires an HTTP(S) `appUrl`, absolute `sourceDirectory` and `evidenceDirectory`, root-relative `scope` routes, and `viewports` with width and height. Optional fields are `instructions`, `documentationPaths`, `githubRepository`, and `reviewTimeoutMs`.
+- `installBrowser(signal?: AbortSignal): Promise<void>` installs the pinned Chromium runtime for local setup, forwarding installation output and supporting cancellation.
 - `reviewDefaults` supplies the initial routes, desktop/mobile sizes, and ten-minute agent budget. Callers use these shared defaults rather than maintaining their own copies.
 - `ReviewOptions` accepts a cancellation `signal`, an optional `viewerDirectory`, and a trusted CI `responsesProxyUrl` for authentication through the runner's proxy.
 - `ReviewResult` contains the packaged `report`, `runIssues`, absolute `outputDirectory`, and a `status` of `complete` or `incomplete`.
 - Failures reject with `ReviewError`, which exposes `code`, `message`, and `runIssues`. Its codes distinguish invalid requests, unavailable or incompatible runtimes, agent failures, invalid responses, cancellation, timeout, and finalization failure. The caller saves and delivers any failure diagnostic; core does not create one.
 
-The root package exports only `runReview`, `reviewDefaults`, `ReviewError`, and the types `ReviewRequest`, `ReviewOptions`, `ReviewResult`, `RunIssue`, and `ReviewErrorCode`.
+The root package exports only `runReview`, `reviewDefaults`, `ReviewError`, `installBrowser`, and the types `ReviewRequest`, `ReviewOptions`, `ReviewResult`, `RunIssue`, and `ReviewErrorCode`.
 
 - `design-review-agent-core/report` remains the public import for pure report validation for browser and Node consumers: `validateReport`, `reportSchema`, and the report/validation types documented in [report-format/README.md](report-format/README.md).
-- Preparing inputs, checking and packaging results, finding viewer assets, and replacing agent execution for tests remain internal. Automation commands support specialized workflows without adding methods to the public root API.
+- Preparing inputs, checking and packaging results, finding viewer assets, and replacing agent execution for tests remain internal.
 
 ## Development
 
 - Use Node 24 and the workspace's pnpm tooling. Install the supported Codex CLI separately and authenticate it before local reviews; runtime requirements belong to the runtime module.
-- `pnpm --filter design-review-agent-core exec node cli.ts install-browser` installs the pinned Chromium runtime after core's dependencies are installed.
+- `pnpm --filter design-review-agent-cli review install-browser` installs the pinned Chromium runtime after core's dependencies are installed.
 - `pnpm --filter design-review-agent-core probe:browser` checks real browser measurements and screenshot image transport without a model or API key. Install Chromium first; this development probe stays out of the Action bundle.
 - `pnpm --filter design-review-agent-core build:viewer` builds the viewer and separate synthetic preview scenarios. `preview` builds and serves those scenarios for development.
 - Run `pnpm build:action` from the repository root to generate `github-action/dist/core/` from this source. The Action owns its distribution build.
@@ -72,5 +69,4 @@ The root package exports only `runReview`, `reviewDefaults`, `ReviewError`, and 
 
 ### Maybe
 
-- Consider combining the local human-facing review CLI with core’s JSON-file bridge for the GitHub Action and automation. Preserve existing Action commands and the local CLI’s ownership of temporary evidence, fresh output directories, and failure diagnostics.
 - Support another engine when a concrete use case justifies it. Replace or extend the internal Codex integration while retaining the review and evidence contracts; verify source access, actual browser image access, cancellation, and result validation for that engine.

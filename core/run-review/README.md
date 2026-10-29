@@ -36,14 +36,7 @@ Run a review from start to finish: prepare shared inputs, run the agent, check i
 
 ## Development
 
-The command file at the package root provides these automation commands. They read and write files so other tools can run a complete review or separate its steps:
-
-- `run --request request.json --output /absolute/report-directory` runs the complete review. Optional `--responses-proxy-url` supplies the trusted CI connection.
-- `install-browser` installs Chromium.
-- `prepare --request request.json --context context.json --prompt prompt.md --schema schema.json` writes the review inputs for a separate execution step.
-- `finalize --context context.json --response response.json --output /absolute/report-directory` checks and packages a response from that step.
-- `package --report report.json --evidence /absolute/evidence-directory --output /absolute/report-directory` packages an existing report without enforcing the full review lifecycle.
-- Invoke distributed commands through `cli.mjs`, or use `cli.ts` during local development after building the viewer. Optional `--viewer` selects built viewer assets. Split-step callers own agent execution, timing, and cancellation.
+Use the [local CLI](../../cli/README.md) to run reviews and install the browser. The GitHub Action calls the bundled core API directly. Preparation, validation, and packaging remain internal lifecycle operations.
 
 ## Testing
 

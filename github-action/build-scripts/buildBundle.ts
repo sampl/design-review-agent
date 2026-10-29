@@ -47,22 +47,18 @@ async function files(directory: string): Promise<string[]> {
 await mkdir(dirname(output), { recursive: true });
 const staging = await mkdtemp(join(dirname(output), ".design-qa-core-"));
 try {
-  for (const [entry, filename] of [
-    ["index.ts", "index.mjs"],
-    ["cli.ts", "cli.mjs"],
-  ] as const)
-    await build({
-      entryPoints: [join(packageDirectory, entry)],
-      outfile: join(staging, filename),
-      bundle: true,
-      platform: "node",
-      format: "esm",
-      target: "node24",
-      packages: "bundle",
-      banner: {
-        js: 'import { createRequire as __coreCreateRequire } from "node:module"; const require = __coreCreateRequire(import.meta.url);',
-      },
-    });
+  await build({
+    entryPoints: [join(packageDirectory, "index.ts")],
+    outfile: join(staging, "index.mjs"),
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    target: "node24",
+    packages: "bundle",
+    banner: {
+      js: 'import { createRequire as __coreCreateRequire } from "node:module"; const require = __coreCreateRequire(import.meta.url);',
+    },
+  });
   await buildViewer(join(staging, "viewer"));
   await cp(
     join(packageDirectory, "agent-prompt"),

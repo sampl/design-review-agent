@@ -1,6 +1,6 @@
 // Verifies local input mapping, report delivery, and failure recovery at the core boundary.
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, mkdir, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, mkdir, stat, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
@@ -207,6 +207,90 @@ test("rejects malformed and unknown flags before invoking core", async () => {
       await assert.rejects(readFile(join(setup.output, "run-status.json")), {
         code: "ENOENT",
       });
+    } finally {
+      await setup.cleanup();
+    }
+  }
+});
+
+test("installs the browser with the caller signal without starting a review or creating reports", async () => {
+  const setup = await fixture();
+  try {
+    const controller = new AbortController();
+    let installationCalls = 0;
+    let reviewCalls = 0;
+    const code = await runCli(["install-browser"], {
+      ...setup.context,
+      signal: controller.signal,
+      installBrowser: async (signal) => {
+        installationCalls++;
+        assert.equal(signal, controller.signal);
+        assert.deepEqual(await readdir(setup.directory), []);
+      },
+      review: async () => {
+        reviewCalls++;
+        throw new Error("Unexpected review");
+      },
+    });
+    assert.equal(code, 0);
+    assert.equal(installationCalls, 1);
+    assert.equal(reviewCalls, 0);
+    assert.deepEqual(await readdir(setup.directory), []);
+    assert.deepEqual(setup.messages, []);
+  } finally {
+    await setup.cleanup();
+  }
+});
+
+test("reports installation failure and cancellation without report diagnostics", async () => {
+  for (const cancelled of [false, true]) {
+    const setup = await fixture();
+    try {
+      const controller = new AbortController();
+      const code = await runCli(["install-browser"], {
+        ...setup.context,
+        signal: controller.signal,
+        installBrowser: async (signal) => {
+          if (cancelled) {
+            controller.abort();
+            assert.equal(signal?.aborted, true);
+          }
+          throw new Error("Installation stopped");
+        },
+      });
+      assert.equal(code, cancelled ? 130 : 1);
+      assert.equal(JSON.parse(setup.messages.at(-1)!).status, "failed");
+      assert.deepEqual(await readdir(setup.directory), []);
+    } finally {
+      await setup.cleanup();
+    }
+  }
+});
+
+test("installation help and invalid arguments never invoke the installer", async () => {
+  for (const [args, expectedCode] of [
+    [["--help"], 0],
+    [["install-browser", "--help"], 0],
+    [["install-browser", "-h"], 0],
+    [["install-browser", "extra"], 1],
+    [["install-browser", "--unknown"], 1],
+    [["install-browser", "--output", "report"], 1],
+    [["install-browser", "--app-url", "http://localhost"], 1],
+  ] as const) {
+    const setup = await fixture();
+    try {
+      let installationCalls = 0;
+      const code = await runCli([...args], {
+        ...setup.context,
+        installBrowser: async () => {
+          installationCalls++;
+        },
+      });
+      assert.equal(code, expectedCode);
+      assert.equal(installationCalls, 0);
+      if (expectedCode === 0)
+        assert.match(setup.messages[0]!, /install-browser/);
+      assert.deepEqual(await readdir(setup.directory), []);
     } finally {
       await setup.cleanup();
     }

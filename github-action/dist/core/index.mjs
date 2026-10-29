@@ -7390,6 +7390,15 @@ async function browserPaths() {
     );
   }
 }
+async function installBrowser(signal = new AbortController().signal) {
+  const { installCli } = await browserPaths();
+  await runProcess(
+    process.execPath,
+    [installCli, "install", "chromium"],
+    signal,
+    { installationOutput: true }
+  );
+}
 async function executeCodex(prepared, signal, responsesProxyUrl, dependencies = {}) {
   const executable = dependencies.executable ?? "codex";
   const version = await runProcess(
@@ -8484,6 +8493,7 @@ async function runReview(request, outputDirectory, options = {}) {
 }
 export {
   ReviewError,
+  installBrowser,
   reviewDefaults,
   runReview
 };

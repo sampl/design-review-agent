@@ -38,9 +38,3 @@ Run Codex CLI with a fresh browser, collect its response, and stop its processes
 
 - Tests start stand-in processes instead of calling a model. They check launch arguments, browser setup that returns screenshot pixels, plain JSON responses, exact versions, and cancellation of Codex, the browser, and any processes they start.
 - Version rejection happens before review execution. Invalid or oversized responses fail without publishing raw model output.
-
-## TODO
-
-### Personal prototype
-
-- Improve source/browser isolation, cancellation enforcement, bounded model use, and execution diagnostics as real customer-runner use reveals gaps.

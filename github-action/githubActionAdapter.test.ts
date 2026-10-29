@@ -440,9 +440,22 @@ test("the committed bundle exposes the expected runtime exports", async () => {
   const core = await loadBundledCore();
   assert.deepEqual(Object.keys(core).sort(), [
     "ReviewError",
+    "installBrowser",
     "reviewDefaults",
     "runReview",
   ]);
+  assert.equal(typeof core.installBrowser, "function");
+  const manifest = JSON.parse(
+    await readFile(
+      new URL("./dist/core/manifest.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.equal("cli.mjs" in manifest.files, false);
+  await assert.rejects(
+    readFile(new URL("./dist/core/cli.mjs", import.meta.url)),
+    { code: "ENOENT" },
+  );
   assert.equal(typeof core.runReview, "function");
   assert.equal(typeof core.ReviewError, "function");
 });

@@ -11,3 +11,4 @@ export type {
   RunIssue,
 } from "./run-review/runReview.ts";
 export type { ReviewErrorCode } from "./run-review/reviewError.ts";
+export { installBrowser } from "./codex-runtime/codexRuntime.ts";
