@@ -30,7 +30,7 @@ Run Codex CLI with a fresh browser, collect its response, and stop its processes
 ## Development
 
 - Install workspace dependencies and a supported Codex CLI, then complete local Codex login yourself. Use the browser-installation command in the parent README.
-- After installing Chromium, run `pnpm --filter design-qa-tool-core probe:browser` to verify real MCP image transport. The probe prints its result and temporary screenshot path.
+- After installing Chromium, run `pnpm --filter design-review-agent-core probe:browser` to verify real MCP image transport. The probe prints its result and temporary screenshot path.
 - Keep required Codex, browser packages, accepted prereleases, viewports, and agent budget in one requirements file. Consumers use those shared values rather than maintaining separate copies.
 - Keep source requirements beside the runtime module; bundle tooling retains their existing location beside the distributed entry points.
 

@@ -44,7 +44,7 @@ importers:
 
   cli:
     dependencies:
-      design-qa-tool-core:
+      design-review-agent-core:
         specifier: workspace:*
         version: link:../core
 

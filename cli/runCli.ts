@@ -8,12 +8,12 @@ import {
   runReview,
   reviewDefaults,
   type ReviewRequest,
-} from "design-qa-tool-core";
+} from "design-review-agent-core";
 
 const HELP = `Design review
 
 Run from the repository checkout with:
-  pnpm --filter design-qa-tool-cli review --app-url URL --source PATH --output NEW_PATH
+  pnpm --filter design-review-agent-cli review --app-url URL --source PATH --output NEW_PATH
 
 Required:
   --app-url URL              Running HTTP(S) application

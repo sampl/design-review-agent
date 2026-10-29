@@ -31,15 +31,15 @@ Call `runReview` for a complete review. Core chooses how to run the agent and co
 
 The root package exports only `runReview`, `reviewDefaults`, `ReviewError`, and the types `ReviewRequest`, `ReviewOptions`, `ReviewResult`, `RunIssue`, and `ReviewErrorCode`.
 
-- `design-qa-tool-core/report` remains the public import for pure report validation for browser and Node consumers: `validateReport`, `reportSchema`, and the report/validation types documented in [report-format/README.md](report-format/README.md).
+- `design-review-agent-core/report` remains the public import for pure report validation for browser and Node consumers: `validateReport`, `reportSchema`, and the report/validation types documented in [report-format/README.md](report-format/README.md).
 - Preparing inputs, checking and packaging results, finding viewer assets, and replacing agent execution for tests remain internal. Automation commands support specialized workflows without adding methods to the public root API.
 
 ## Development
 
 - Use Node 24 and the workspace's pnpm tooling. Install the supported Codex CLI separately and authenticate it before local reviews; runtime requirements belong to the runtime module.
-- `pnpm --filter design-qa-tool-core exec node cli.ts install-browser` installs the pinned Chromium runtime after core's dependencies are installed.
-- `pnpm --filter design-qa-tool-core probe:browser` checks real browser measurements and screenshot image transport without a model or API key. Install Chromium first; this development probe stays out of the Action bundle.
-- `pnpm --filter design-qa-tool-core build:viewer` builds the viewer and separate synthetic preview scenarios. `preview` builds and serves those scenarios for development.
+- `pnpm --filter design-review-agent-core exec node cli.ts install-browser` installs the pinned Chromium runtime after core's dependencies are installed.
+- `pnpm --filter design-review-agent-core probe:browser` checks real browser measurements and screenshot image transport without a model or API key. Install Chromium first; this development probe stays out of the Action bundle.
+- `pnpm --filter design-review-agent-core build:viewer` builds the viewer and separate synthetic preview scenarios. `preview` builds and serves those scenarios for development.
 - Run `pnpm build:action` from the repository root to generate `github-action/dist/core/` from this source. The Action owns its distribution build.
 
 ## Testing

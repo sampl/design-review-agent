@@ -15,7 +15,7 @@
     "format:check": "prettier --check .",
     "spellcheck": "cspell --config cspell.config.yaml",
     "build:action": "node github-action/build-scripts/buildBundle.ts",
-    "build:viewer": "pnpm --filter design-qa-tool-core build:viewer"
+    "build:viewer": "pnpm --filter design-review-agent-core build:viewer"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

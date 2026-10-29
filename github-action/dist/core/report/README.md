@@ -76,7 +76,7 @@ Optional `reproductionSteps` is a nonempty ordered array of nonempty strings exp
 
 **Validation**
 
-- Import `reportSchema`, schema-derived report types, and `validateReport` from `design-qa-tool-core/report`. The schema is ordinary JSON-compatible data for producers and other tooling.
+- Import `reportSchema`, schema-derived report types, and `validateReport` from `design-review-agent-core/report`. The schema is ordinary JSON-compatible data for producers and other tooling.
 - `validateReport(value: unknown)` returns `{valid: true, report}` or `{valid: false, errors}`. Each error has a JSON Pointer `path`, human-readable `message`, and `code`: `schema`, `unsupported-version`, `duplicate-id`, `invalid-reference`, or `inconsistent-evidence`.
 - Validate required fields, types, enums, nonempty content, dates, versions, unique IDs, valid area references, and consistent evidence. Reject unknown fields at every object boundary, including legacy categories, implementation plans, and fix status.
 - Validate image references as safe relative paths. Do not read files, verify image bytes or dimensions, or prove that observations are true. Actual asset validation belongs to the PNG packager, outside the pure validation boundary.

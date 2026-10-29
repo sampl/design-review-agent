@@ -33,13 +33,13 @@ Start the app and wait until it is ready before using the CLI. The review reads 
 
 - Use Node 24 and install workspace dependencies with pnpm from the repository root.
 - Install a supported Codex CLI version listed in the [runtime README](../core/codex-runtime/README.md). Complete `codex login` yourself if needed; credentials do not belong in review flags or instructions.
-- Run `pnpm --filter design-qa-tool-core exec node cli.ts install-browser` to install the pinned browser.
+- Run `pnpm --filter design-review-agent-core exec node cli.ts install-browser` to install the pinned browser.
 - The installer needs network access and permission to write to the operating system's browser cache. A restricted agent sandbox may need access granted outside the repository; otherwise cache-lock retries can stall installation. A normal terminal needs no special repository cache setup.
-- Run `pnpm --filter design-qa-tool-core build:viewer` to build the report viewer.
+- Run `pnpm --filter design-review-agent-core build:viewer` to build the report viewer.
 
 **Running a review**
 
-- Start the app, then run `pnpm --filter design-qa-tool-cli review --app-url <url> --source <absolute-source-directory> --output <new-absolute-report-directory>` from the repository root.
+- Start the app, then run `pnpm --filter design-review-agent-cli review --app-url <url> --source <absolute-source-directory> --output <new-absolute-report-directory>` from the repository root.
 - Use absolute paths: pnpm runs this command from the CLI package directory. The output parent must already exist, and the report directory must be new so an earlier review is never overwritten.
 - Repeat `--route /path` to choose pages. The default is `/`.
 - Repeat `--viewport WIDTHxHEIGHT` to choose screen sizes. Defaults are desktop 1440x900 and mobile 390x844.

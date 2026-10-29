@@ -1,9 +1,9 @@
 {
-  "package": "design-qa-tool-core",
+  "package": "design-review-agent-core",
   "version": "0.0.1",
   "sourceRepository": "sampl/design-review-agent",
   "sourceDirectory": "core",
-  "sourceCommit": "2685b33297cc92b7dd887f837c5c79db30445e3e",
+  "sourceCommit": "c1589e9d612e0dd6b8cebe1bf0f573f2ead0e212",
   "sourceDirty": true,
   "files": {
     "agent-prompt/agent-prompt.md": "176735950450e6c39e7e7f433a2ef3b92a5a59e22d6dafc93dc9eb8b54ec5e85",
@@ -20,17 +20,17 @@
     "agent-prompt/checks/typography.md": "61bf3bbb1e2f69d73ee4a8b57d73ce8d6c0fe71e9d8298a58d1bc81d82301590",
     "agent-prompt/README.md": "0de5be7b72f0d8a07b57db9c0c707139fd9ac43df2a68196b56bdf32b04e5a18",
     "build-scripts/README.md": "ba7e0d6746c4c6e9310f7e326926a1a06c2c22b443ef0e9908b88cda376b39c2",
-    "cli.mjs": "e74957d6a36a58c49dfe4007c5de827135a7ae93086793760d3966314d2254c0",
-    "codex-runtime/README.md": "845f1883c6c9286fcba9258edbe5cc527397aa1f45cfac14716b14a4009a396b",
-    "html-viewer/README.md": "79f0c29d2989d16c69355bb4b210109f482fc7f26dbf8db8281af2847748b49a",
-    "index.mjs": "0db4751f441fbcdabc0f4c565b9bd21ecac2e1dd6047e84fcb6088f176baa125",
-    "README.md": "76e4c580ffab0e2b7e285e8f9df24d097c66cf2f1941680e52dd3a89eea3e753",
-    "report/README.md": "fa360fcd9b0a549604d15387eda5fcc4ff6a287f9b5276372654136e0c3d56b2",
+    "cli.mjs": "c142f688921e26b86ca37f8ccaf5e67318201449c85ed5aa9798b83343459baa",
+    "codex-runtime/README.md": "580f69c73a435791e930342b390636af125b67c28d338819b28e67bd97677eb3",
+    "html-viewer/README.md": "1cbb9d00a9f847d1211765b6afde8b225b028222e6dbb60ee8b85eb88fa0be37",
+    "index.mjs": "2a94cd7dab41e5e6289bcf0e1dfa3837a23945f233efe5aeb1c50478aea50d96",
+    "README.md": "e1149a93c3e55d1d511444db84a3545082ec59cc3af7387802cf3af4d502c621",
+    "report/README.md": "0023e10cd931e55d647c023e1455fb48c350d97456b10615a82d62632376dc8b",
     "run-review/README.md": "444ce663e32429fa5e2dd1ea22f24b35ee7db7f6a06ea0cc91b9b990cceb9c1c",
     "runtimeRequirements.json": "d2d4257ac4bde4088807dc71c0193979ee675be1ed9718f4fe4d0e15d8912927",
     "viewer/index.html": "d55b888075182da9daa61711e781bcf094dbf44dd151ac2a42a27842ca1bfb1b",
-    "viewer/report.schema.json": "d9fb4ac83ccf3a598d0fd386610585a3917c689e774c4aac5ff5f73bc919d47b",
+    "viewer/report.schema.json": "c8c48f2e343dd2ecded754d520ef54d9e34daa336b8381749e8cb20e79c47d5d",
     "viewer/viewer.css": "c10c3206b1b30749391db6d76f34e52c529b7a0b033fcef8a0efa99f9821a9f9",
-    "viewer/viewer.js": "9bf81721f1f44abab23c07dc3f19a10abccdc2b00cac677ee9b260c4c1ebae34"
+    "viewer/viewer.js": "d539bca101a4982ee73823fdb0f124583aaa151000a478632d4c215a8417f631"
   }
 }

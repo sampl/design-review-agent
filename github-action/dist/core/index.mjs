@@ -7220,7 +7220,7 @@ import { isAbsolute, join as join3 } from "node:path";
 // core/report-format/reportSchema.ts
 var reportSchema = {
   $schema: "http://json-schema.org/draft-07/schema#",
-  $id: "https://directedworks.com/design-qa-tool/report/0.1",
+  $id: "https://directedworks.com/design-review-agent/report/0.1",
   title: "Design QA report",
   type: "object",
   additionalProperties: false,

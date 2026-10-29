@@ -4,7 +4,7 @@ import type { FromSchema, JSONSchema } from "json-schema-to-ts";
 
 export const reportSchema = {
   $schema: "http://json-schema.org/draft-07/schema#",
-  $id: "https://directedworks.com/design-qa-tool/report/0.1",
+  $id: "https://directedworks.com/design-review-agent/report/0.1",
   title: "Design QA report",
   type: "object",
   additionalProperties: false,

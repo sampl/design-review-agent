@@ -157,7 +157,7 @@ try {
     join(staging, "manifest.json"),
     JSON.stringify(
       {
-        package: "design-qa-tool-core",
+        package: "design-review-agent-core",
         version: packageData.version,
         sourceRepository: "sampl/design-review-agent",
         sourceDirectory: "core",
@@ -180,7 +180,7 @@ try {
       await readFile(join(output, "manifest.json"), "utf8"),
     ) as { package?: string; files?: Record<string, string> };
     if (
-      manifest.package !== "design-qa-tool-core" ||
+      manifest.package !== "design-review-agent-core" ||
       !manifest.files ||
       existing.some(
         (filename) =>

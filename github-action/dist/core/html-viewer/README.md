@@ -123,7 +123,7 @@ Update this list when files are added, moved, or removed.
 
 ## Development
 
-- Run `pnpm --filter design-qa-tool-core preview`, then open `http://127.0.0.1:4175/`. The command builds before serving with the pinned development server; rerun `pnpm --filter design-qa-tool-core build:viewer` and reload after editing. Serve only generated previews, accessible from this computer. Disable caching and preserve HTTP errors for missing files instead of returning the main page. An occupied port stops the command instead of choosing another port.
+- Run `pnpm --filter design-review-agent-core preview`, then open `http://127.0.0.1:4175/`. The command builds before serving with the pinned development server; rerun `pnpm --filter design-review-agent-core build:viewer` and reload after editing. Serve only generated previews, accessible from this computer. Disable caching and preserve HTTP errors for missing files instead of returning the main page. An occupied port stops the command instead of choosing another port.
 - The separate preview page selects scenarios that can also be opened by URL. It is never included inside a report. Building reusable viewer files is separate from generating fake reports for previews. Keep generated previews out of version control.
 - The Complete review preview includes a fake GitHub repository. Visual findings omits it to check that the Create issue action appears only when a GitHub destination is supplied.
 - The Complete review preview has five distinct accessibility findings, categories with one finding, and an empty category. The warnings-only preview has eight distinct concerns to exercise individual disclosure and Show more. The smaller contract-test fixtures still cover all ten categories.

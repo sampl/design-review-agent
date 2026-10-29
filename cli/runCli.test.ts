@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, mkdir, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
-import { ReviewError, type ReviewRequest } from "design-qa-tool-core";
+import { ReviewError, type ReviewRequest } from "design-review-agent-core";
 import { runCli } from "./runCli.ts";
 
 async function fixture() {

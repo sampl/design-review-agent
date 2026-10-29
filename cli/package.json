@@ -1,5 +1,5 @@
 {
-  "name": "design-qa-tool-cli",
+  "name": "design-review-agent-cli",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -10,6 +10,6 @@
     "review": "node cli.ts"
   },
   "dependencies": {
-    "design-qa-tool-core": "workspace:*"
+    "design-review-agent-core": "workspace:*"
   }
 }
