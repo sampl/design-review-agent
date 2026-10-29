@@ -19,7 +19,7 @@ A review needs an environment for Codex CLI, storage for its assets, and a brows
 - Before starting, provide a reachable app, readable source and documentation, real browser screenshots, and writable locations for evidence and reports.
 - Core runs read-only and returns findings plus execution issues and coverage limitations. It does not ask follow-up questions during a run.
 - The marketing website points users to the Action. It does not run reviews or depend on core.
-- This repository owns core and its local CLI, skill, and GitHub Action. Directed retains the cloud service and marketing website. The Action commits a generated core build inside its own module.
+- This repository owns core and its local CLI, skill, and GitHub Action. Directed retains the cloud service and marketing website. The Action generates its core build during runner setup; generated files stay untracked.
 - The public entry point stays at the package root. Internal folder names can change without changing the public report import or the locations of files distributed with the Action.
 
 ## API

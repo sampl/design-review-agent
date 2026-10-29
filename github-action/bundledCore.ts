@@ -1,4 +1,4 @@
-// The committed bundle is built from core; keep its trusted type assertion here.
+// Setup builds this bundle from core; keep its trusted type assertion here.
 export async function loadBundledCore(): Promise<
   typeof import("../core/index.ts")
 > {

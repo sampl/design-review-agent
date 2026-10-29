@@ -2,6 +2,7 @@
 import { build } from "esbuild";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import {
   cp,
   mkdir,
@@ -128,25 +129,31 @@ try {
   const packageData = JSON.parse(
     await readFile(join(packageDirectory, "package.json"), "utf8"),
   ) as { version: string };
-  const sourceCommit = execFileSync("git", ["rev-parse", "HEAD"], {
-    cwd: repositoryDirectory,
-    encoding: "utf8",
-  }).trim();
-  const sourceStatus = execFileSync(
-    "git",
-    [
-      "status",
-      "--porcelain",
-      "--",
-      "core/",
-      "github-action/build-scripts/",
-      "package.json",
-      "github-action/package.json",
-      "pnpm-lock.yaml",
-      "pnpm-workspace.yaml",
-    ],
-    { cwd: repositoryDirectory, encoding: "utf8" },
-  ).trim();
+  // Downloaded Actions have no Git metadata. Do not discover the caller's repository.
+  const hasGitMetadata = existsSync(join(repositoryDirectory, ".git"));
+  const sourceCommit = hasGitMetadata
+    ? execFileSync("git", ["rev-parse", "HEAD"], {
+        cwd: repositoryDirectory,
+        encoding: "utf8",
+      }).trim()
+    : null;
+  const sourceStatus = hasGitMetadata
+    ? execFileSync(
+        "git",
+        [
+          "status",
+          "--porcelain",
+          "--",
+          "core/",
+          "github-action/build-scripts/",
+          "package.json",
+          "github-action/package.json",
+          "pnpm-lock.yaml",
+          "pnpm-workspace.yaml",
+        ],
+        { cwd: repositoryDirectory, encoding: "utf8" },
+      ).trim()
+    : null;
   const digests: Record<string, string> = {};
   for (const filename of await files(staging))
     digests[filename] = createHash("sha256")
@@ -161,7 +168,7 @@ try {
         sourceRepository: "sampl/design-review-agent",
         sourceDirectory: "core",
         sourceCommit,
-        sourceDirty: sourceStatus !== "",
+        sourceDirty: sourceStatus === null ? null : sourceStatus !== "",
         files: digests,
       },
       null,
@@ -215,7 +222,7 @@ try {
   }
   if (backedUp) await rm(backup, { recursive: true });
   console.info(
-    `◈ Core bundle written to ${relative(process.cwd(), output)} (${sourceCommit}, sourceDirty=${sourceStatus !== ""}).`,
+    `◈ Core bundle written to ${relative(process.cwd(), output)} (${sourceCommit ?? "source archive"}).`,
   );
 } finally {
   await rm(staging, { recursive: true, force: true });

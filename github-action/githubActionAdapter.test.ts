@@ -1,4 +1,4 @@
-// Tests Action mapping and the committed runtime without model or privileged calls.
+// Tests Action mapping and the generated runtime without model or privileged calls.
 import { ChildProcess, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import type { ReviewResult, RunIssue } from "../core/index.ts";
@@ -7,13 +7,15 @@ import {
   emptyReport,
 } from "../core/report-format/fixtures/contract.ts";
 import { loadBundledCore } from "./bundledCore.ts";
-import { test } from "vitest";
+import { beforeAll, test } from "vitest";
 import assert from "node:assert/strict";
 import {
   mkdtemp,
+  cp,
   mkdir,
   readFile,
   realpath,
+  rm,
   symlink,
   writeFile,
 } from "node:fs/promises";
@@ -27,6 +29,16 @@ import {
   runtimeRequirements,
 } from "./githubActionAdapter.ts";
 import { LINUX_DROP_SUDO_SCRIPT } from "./isolate.ts";
+
+beforeAll(() => {
+  const result = spawnSync(
+    process.execPath,
+    [fileURLToPath(new URL("./build-scripts/buildBundle.ts", import.meta.url))],
+    { encoding: "utf8", timeout: 30000 },
+  );
+  assert.ifError(result.error);
+  assert.equal(result.status, 0, result.stderr);
+}, 30000);
 
 const inputs = {
   appUrl: "http://127.0.0.1:4321",
@@ -436,7 +448,7 @@ test("rejects malformed Action command arguments before setup or review", () => 
   }
 });
 
-test("the committed bundle exposes the expected runtime exports", async () => {
+test("the generated bundle exposes the expected runtime exports", async () => {
   const core = await loadBundledCore();
   assert.deepEqual(Object.keys(core).sort(), [
     "ReviewError",
@@ -459,3 +471,66 @@ test("the committed bundle exposes the expected runtime exports", async () => {
   assert.equal(typeof core.runReview, "function");
   assert.equal(typeof core.ReviewError, "function");
 });
+
+test("builds a downloaded Action without Git metadata from an unrelated directory", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "action-build-test-"));
+  const repository = fileURLToPath(new URL("../", import.meta.url));
+  try {
+    for (const name of [
+      "core",
+      "github-action/build-scripts",
+      "package.json",
+    ]) {
+      await cp(path.join(repository, name), path.join(directory, name), {
+        recursive: true,
+        filter: (source) =>
+          !["node_modules", "dist"].includes(path.basename(source)),
+      });
+    }
+    await symlink(
+      path.join(repository, "node_modules"),
+      path.join(directory, "node_modules"),
+    );
+    await symlink(
+      path.join(repository, "core/node_modules"),
+      path.join(directory, "core/node_modules"),
+    );
+    const result = spawnSync(
+      process.execPath,
+      [path.join(directory, "github-action/build-scripts/buildBundle.ts")],
+      {
+        cwd: repository,
+        encoding: "utf8",
+        timeout: 30000,
+      },
+    );
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, result.stderr);
+    const output = path.join(directory, "github-action/dist/core");
+    const manifest = JSON.parse(
+      await readFile(path.join(output, "manifest.json"), "utf8"),
+    );
+    assert.equal(manifest.sourceCommit, null);
+    assert.equal(manifest.sourceDirty, null);
+    for (const [filename, digest] of Object.entries(manifest.files)) {
+      assert.equal(
+        createHash("sha256")
+          .update(await readFile(path.join(output, filename)))
+          .digest("hex"),
+        digest,
+      );
+    }
+    for (const filename of [
+      "index.mjs",
+      "runtimeRequirements.json",
+      "agent-prompt/agent-prompt.md",
+      "viewer/index.html",
+      "viewer/viewer.js",
+      "viewer/report.schema.json",
+    ]) {
+      assert.ok(filename in manifest.files, filename);
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 30000);

@@ -23,7 +23,7 @@ Everything runs in your GitHub job. The browser can reach localhost because it r
 - The review follows repository instructions and can delegate source inspection. It does not edit source, submit forms, make purchases, or change app data. Environment values/files and credential stores are excluded from inspection.
 - Browser evaluation is limited to read-only measurements, such as geometry and scroll offsets. It must not fetch, navigate through code, submit forms, or change the page or app.
 - Screenshots must reach the model as actual image pixels. With the pinned MCP version, screenshot calls omit `filename` so the tool returns inline image content and saves an automatically named evidence file. Providing `filename` suppresses those inline images. Text or accessibility snapshots alone are not sufficient visual evidence.
-- Core is built from local source and committed in `github-action/dist/core/`, including its instructions, schema, validator, and viewer. The Action does not fetch core source during a run.
+- The Action installs workspace dependencies and builds core from the source shipped with the selected Action revision into ignored `github-action/dist/core/`, including its instructions, schema, validator, and viewer. Setup includes build tools and runs before authentication and privilege isolation.
 
 ### Data and permissions
 
@@ -36,7 +36,7 @@ Everything runs in your GitHub job. The browser can reach localhost because it r
 - [Core](core/README.md) owns shared review rules, defaults, browser execution, validation, and report generation.
 - [CLI](cli/README.md) provides checkout-based local review commands.
 - [Skill](skill/README.md) gathers inputs and presents CLI results.
-- [GitHub Action](github-action/README.md) owns workflow inputs, runner setup, isolation, outputs, and its committed runtime build.
+- [GitHub Action](github-action/README.md) owns workflow inputs, runner setup, isolation, outputs, and its runtime build.
 
 Keep module and submodule READMEs alongside their code. Shared contributor tooling belongs at the repository root.
 
@@ -54,7 +54,7 @@ Keep module and submodule READMEs alongside their code. Shared contributor tooli
 - `pnpm test` runs all core, CLI, viewer, and Action unit tests through Vitest without model calls.
 - `pnpm ts`, `pnpm lint`, `pnpm format:check`, and `pnpm spellcheck` check the workspace. `pnpm format` applies formatting.
 - The single root TypeScript configuration covers handwritten TypeScript, including the Action adapter, browser code, and tests, and enables unused-local, unused-parameter, checked indexed-access, and exact optional-property checks. Generated output is excluded. Imported vendored helpers are also type-checked; they stay excluded from formatting and linting, and dedicated Action tests check vendor integrity.
-- `pnpm build:viewer` builds viewer assets and synthetic development previews. `pnpm build:action` generates the committed Action runtime.
+- `pnpm build:viewer` builds viewer assets and synthetic development previews. `pnpm build:action` generates the ignored Action runtime. Action tests build it automatically.
 - Keep packages private. CLI and skill installation and package publication are deferred; local testing uses this checkout.
 
 ## Testing
@@ -69,7 +69,7 @@ Keep module and submodule READMEs alongside their code. Shared contributor tooli
 
 ## Deployment
 
-- Run `pnpm build:action`, inspect the generated diff and manifest, and commit the runtime together with source changes. Never edit generated files by hand.
+- Commit source changes only. The composite Action runs `pnpm build:action` during setup, using the frozen workspace lockfile. Generated files in `github-action/dist/` stay untracked; local builds use the same command.
 - Consumers use `sampl/design-review-agent/github-action@…`. The earlier root-level Action path does not exist in new revisions.
 
 ## TODO

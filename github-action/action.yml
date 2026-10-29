@@ -47,13 +47,14 @@ runs:
       uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
       with:
         node-version: "24"
-    - name: Install pinned browser runtime
+    - name: Build review runtime and install pinned browser
       shell: bash
       env:
         DESIGN_REVIEW_ACTION_DIRECTORY_PATH: ${{ github.action_path }}
       run: |
         npm install --global pnpm@9.15.9
-        pnpm --dir "$DESIGN_REVIEW_ACTION_DIRECTORY_PATH/.." --filter design-review-github-action... install --prod --frozen-lockfile --ignore-scripts
+        pnpm --dir "$DESIGN_REVIEW_ACTION_DIRECTORY_PATH/.." install --prod=false --frozen-lockfile --ignore-scripts
+        pnpm --dir "$DESIGN_REVIEW_ACTION_DIRECTORY_PATH/.." build:action
         node "$DESIGN_REVIEW_ACTION_DIRECTORY_PATH/node_modules/playwright/cli.js" install --with-deps chromium
     # Runtime versions belong to core; the committed lockfile must match its requirements.
     - name: Read shared runtime requirements

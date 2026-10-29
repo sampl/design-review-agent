@@ -143,8 +143,8 @@ Findings are recommendations; even severe design findings do not fail execution.
 ## Implementation
 
 - `githubActionAdapter.ts` maps typed GitHub inputs and outputs to the bundled core lifecycle. Node 24 runs this TypeScript directly.
-- `bundledCore.ts` loads the committed core build using the source package’s type contract; production never imports core source.
+- `bundledCore.ts` loads the core build generated during setup using the source package’s type contract; production never imports core source.
 - `isolate.ts` launches the adapter after dropping disposable-runner privileges.
-- [Build scripts](build-scripts/README.md) generate the committed runtime in `dist/core/` from local core source.
+- [Build scripts](build-scripts/README.md) generate the ignored runtime in `dist/core/` from local core source. The Action installs workspace dependencies, including build tools, and builds it before authentication and privilege isolation. This adds setup time but requires no generated-file commits.
 - [Vendored helpers](vendor/openai-codex-action/README.md) document upstream isolation code and its license.
 - Production dependencies are installed with pinned pnpm and the repository's frozen lockfile before authentication and isolation setup. Core source is not compiled during a workflow run.
