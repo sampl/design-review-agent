@@ -61,7 +61,7 @@ runs:
       env:
         DESIGN_REVIEW_ACTION_DIRECTORY_PATH: ${{ github.action_path }}
         RUNNER_TEMPORARY_DIRECTORY_PATH: ${{ runner.temp }}
-      run: node "$DESIGN_REVIEW_ACTION_DIRECTORY_PATH/scripts/designReview.mjs" runtime "$GITHUB_OUTPUT" "$RUNNER_TEMPORARY_DIRECTORY_PATH"
+      run: node "$DESIGN_REVIEW_ACTION_DIRECTORY_PATH/scripts/githubActionAdapter.mjs" runtime "$GITHUB_OUTPUT" "$RUNNER_TEMPORARY_DIRECTORY_PATH"
     # Setup only: upstream keeps the API key in its proxy; our core launches Codex.
     - name: Set up protected Codex authentication
       uses: openai/codex-action@86365089eb2b84e0a8fb0717b304f8bdcb13b20e # v1.12
@@ -86,4 +86,4 @@ runs:
         DESIGN_QA_TIMEOUT_MINUTES: ${{ inputs.timeout-minutes }}
         REQUESTED_DESIGN_QA_ARTIFACT_DIRECTORY_PATH: ${{ inputs.design-qa-artifact-directory-path }}
         DESIGN_REVIEW_PROXY_INFORMATION_FILE: ${{ steps.runtime.outputs.codex-home }}/${{ github.run_id }}.json
-      run: node --disable-sigusr1 "$DESIGN_REVIEW_ACTION_DIRECTORY_PATH/scripts/isolate.ts" run node --disable-sigusr1 "$DESIGN_REVIEW_ACTION_DIRECTORY_PATH/scripts/designReview.mjs" run "$CUSTOMER_REPOSITORY_DIRECTORY_PATH" "$RUNNER_TEMPORARY_DIRECTORY_PATH" "$DESIGN_QA_APP_URL" "$DESIGN_QA_PATHS" "$DESIGN_QA_SOURCE_SCOPE" "$DESIGN_QA_VIEWPORTS" "$DESIGN_QA_REVIEW_FOCUS" "$DESIGN_QA_TIMEOUT_MINUTES" "$REQUESTED_DESIGN_QA_ARTIFACT_DIRECTORY_PATH" "$GITHUB_OUTPUT" "$DESIGN_REVIEW_PROXY_INFORMATION_FILE"
+      run: node --disable-sigusr1 "$DESIGN_REVIEW_ACTION_DIRECTORY_PATH/scripts/isolate.ts" run node --disable-sigusr1 "$DESIGN_REVIEW_ACTION_DIRECTORY_PATH/scripts/githubActionAdapter.mjs" run "$CUSTOMER_REPOSITORY_DIRECTORY_PATH" "$RUNNER_TEMPORARY_DIRECTORY_PATH" "$DESIGN_QA_APP_URL" "$DESIGN_QA_PATHS" "$DESIGN_QA_SOURCE_SCOPE" "$DESIGN_QA_VIEWPORTS" "$DESIGN_QA_REVIEW_FOCUS" "$DESIGN_QA_TIMEOUT_MINUTES" "$REQUESTED_DESIGN_QA_ARTIFACT_DIRECTORY_PATH" "$GITHUB_OUTPUT" "$DESIGN_REVIEW_PROXY_INFORMATION_FILE"

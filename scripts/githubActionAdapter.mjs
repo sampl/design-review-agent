@@ -10,6 +10,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { reviewDefaults } from "../dist/core/index.mjs";
 
 const ACTION_DIRECTORY = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -60,10 +61,10 @@ export async function resolveSourceDirectory(repositoryDirectory, sourceScope) {
 
 export function parseReviewInputs({
   appUrl,
-  paths = '["/"]',
-  viewports = '[{"width":1440,"height":900},{"width":390,"height":844}]',
+  paths = JSON.stringify(reviewDefaults.scope),
+  viewports = JSON.stringify(reviewDefaults.viewports),
   reviewFocus = "",
-  timeoutMinutes = "10",
+  timeoutMinutes = String(reviewDefaults.reviewTimeoutMs / 60000),
 }) {
   const parsedUrl = new URL(appUrl);
   if (

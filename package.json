@@ -10,7 +10,6 @@
   "scripts": {
     "test": "node --test scripts/*.test.mjs",
     "lint": "eslint .",
-    "probe:browser": "node scripts/browserProbe.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "spellcheck": "cspell --config cspell.config.yaml"

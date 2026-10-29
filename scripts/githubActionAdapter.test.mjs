@@ -16,7 +16,7 @@ import {
   resolveSourceDirectory,
   runDesignReviewAction,
   runtimeRequirements,
-} from "./designReview.mjs";
+} from "./githubActionAdapter.mjs";
 import { LINUX_DROP_SUDO_SCRIPT } from "./isolate.ts";
 
 const inputs = {

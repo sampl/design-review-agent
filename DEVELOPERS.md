@@ -33,20 +33,18 @@ Everything runs in your GitHub job. The browser can reach localhost because it r
 
 ### Files
 
+Shared review rules, defaults, browser configuration, evidence checks, and report generation belong in Directed’s `design-qa-tool-core` package. The scripts below stay here because they connect that engine to the GitHub runner.
+
 - [README.md](README.md) — Setup and configuration for people and agents using this Action in their own repositories.
 - [DEVELOPERS.md](DEVELOPERS.md) — Contributor setup, architecture, validation, publishing, and roadmap.
 - [action.yml](action.yml) — Composite Action inputs, environment/authentication setup, isolated core invocation, and outputs.
-- [scripts/designReview.mjs](scripts/designReview.mjs) — GitHub input/output translation, source scope resolution, runtime version checks, and diagnostic artifacts around the normal core entry point.
-- [scripts/isolate.ts](scripts/isolate.ts) — Linux launcher using the pinned upstream privilege boundary before calling core.
-- [scripts/vendor/openai-codex-action/](scripts/vendor/openai-codex-action/) — Upstream account/socket isolation and credential helpers with their Apache license; provenance and the only adaptations are documented below.
-- [scripts/designReview.test.mjs](scripts/designReview.test.mjs) — Input/path validation, normal core invocation, unchanged core outcomes, diagnostic artifacts, runtime compatibility, and pinned upstream isolation regression checks.
-- [scripts/browserProbe.mjs](scripts/browserProbe.mjs) — Local browser probe for read-only measurements, inline PNG responses, and identical saved screenshots without a model or API key.
-- [package.json](package.json) and [package-lock.json](package-lock.json) — Runtime requirements, commands, and pinned dependencies.
-- [cspell.config.yaml](cspell.config.yaml) — Package spelling configuration.
-- [eslint.config.mjs](eslint.config.mjs) — Recommended JavaScript and TypeScript lint rules and Node globals.
-- [.prettierignore](.prettierignore) — Formatting exclusions for generated code, vendored code, and lockfiles.
-- [.gitignore](.gitignore) — Installed dependency exclusions.
-- [dist/core/](dist/core/) — Generated shared review engine, rubric, schema, viewer, and source manifest. Regenerate from the monorepo rather than editing these files.
+- [scripts/githubActionAdapter.mjs](scripts/githubActionAdapter.mjs) — Translates GitHub string inputs, resolves checkout-relative source paths, reads authentication proxy metadata, calls core, and writes Action outputs and failure diagnostics. Keep GitHub-specific limits here; consume core’s shared defaults and implement shared review behavior in core. Update `action.yml` and adapter tests together when changing the interface.
+- [scripts/githubActionAdapter.test.mjs](scripts/githubActionAdapter.test.mjs) — Tests input/path handling, core invocation, diagnostics, cancellation, runtime/default compatibility, and pinned upstream isolation code. Run `npm test` after adapter or workflow changes. Keep review-engine tests in core.
+- [scripts/isolate.ts](scripts/isolate.ts) — Launches the adapter after removing runner privileges. Install dependencies, browsers, and authentication first; run this only on a fresh disposable Linux runner. It changes host permissions for the rest of the job, so it belongs here rather than in core or the local CLI. Review changes with the upstream helpers and isolation tests.
+- [scripts/vendor/openai-codex-action/dropSudo.ts](scripts/vendor/openai-codex-action/dropSudo.ts) — Vendored OpenAI implementation that removes sudo access and restricts privileged service sockets. Preserve provenance and minimal adaptations; review upgrades alongside `isolate.ts`, `linuxCredentials.ts`, and the pinned regression hashes.
+- [scripts/vendor/openai-codex-action/linuxCredentials.ts](scripts/vendor/openai-codex-action/linuxCredentials.ts) — Captures and validates the runner’s user/group IDs so isolation accounts for its original privileges. Maintain it with `dropSudo.ts` and update the upstream regression hashes only after reviewing changes.
+- [scripts/vendor/openai-codex-action/LICENSE](scripts/vendor/openai-codex-action/LICENSE) — License accompanying the copied OpenAI code. Preserve it with the vendored files.
+- [dist/core/](dist/core/) — Generated shared review engine, rubric, schema, viewer, and source manifest. Never edit these files manually; regenerate them from the monorepo using the [deployment instructions](#deployment).
 
 Update this list when files are added, moved, or removed.
 
@@ -64,7 +62,6 @@ Update this list when files are added, moved, or removed.
 - `npm run lint` checks JavaScript and TypeScript with ESLint's recommended rules. Node 24 runs the small TypeScript isolation entry point directly.
 - `npm run format:check` and `npm run spellcheck` check formatting and spelling.
 - `npm run format` applies formatting. These tools discover files automatically; their configurations exclude generated `dist/` and upstream `scripts/vendor/` code. Formatting and spelling also exclude dependency lockfiles.
-- Run `npx playwright install chromium`, then `npm run probe:browser` to verify that MCP returns image pixels and saves an identical PNG. This fixture check needs no model or API key.
 
 ## Testing
 
