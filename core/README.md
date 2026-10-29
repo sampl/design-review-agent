@@ -4,6 +4,14 @@ Core does the design review. Give it a running app, the app's source code, and a
 
 The local CLI and GitHub Action use this same review flow. The local testing skill calls the CLI, so it exercises the same flow.
 
+## Runtime requirements
+
+A review needs an environment for Codex CLI, storage for its assets, and a browser for screenshots. Core already supports all three through built-in behavior or caller-supplied setup:
+
+- **Agent execution:** the caller supplies a host or CI runner with Node 24, a supported Codex CLI, and authentication. Core starts Codex in a fresh temporary working directory, manages its time limit and cancellation, and cleans up its processes.
+- **Asset storage:** the caller chooses writable filesystem locations through `ReviewRequest.evidenceDirectory` and the `runReview` `outputDirectory` argument. Core creates the evidence directory and packages the report, screenshots, and viewer into the output directory. The caller handles any upload, hosting, or long-term retention.
+- **Browser access:** core configures Playwright MCP and starts a separate headless Chromium browser for each review so Codex can inspect the app and capture screenshots. Core provides the `install-browser` command to install the pinned browser runtime; the caller runs it during environment setup and supplies a reachable `appUrl`.
+
 ## Architecture
 
 - Core prepares review inputs and shared guidance, runs Codex with a browser, checks the report and screenshot coverage, and saves the result with its viewer.
