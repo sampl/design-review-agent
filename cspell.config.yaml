@@ -3,3 +3,14 @@ language: en
 words:
   - sampl
   - viewports
+  - sigusr
+  - privs
+  - setpriv
+  - unreviewed
+  - esac
+  - getent
+  - nogroup
+  - reuid
+  - regid
+  - LOGNAME
+  - SHELLOPTS

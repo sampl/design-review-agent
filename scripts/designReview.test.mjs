@@ -1,8 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  lstat,
-  copyFile,
   mkdtemp,
   mkdir,
   readFile,
@@ -12,16 +10,14 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { createHash } from "node:crypto";
 import {
-  createBrowserConfiguration,
-  linkDefaultCodexHome,
-  finalizeDesignReviewRun,
   parseReviewInputs,
-  prepareDesignReviewRun,
   resolveSourceDirectory,
+  runDesignReviewAction,
+  runtimeRequirements,
 } from "./designReview.mjs";
+import { LINUX_DROP_SUDO_SCRIPT } from "./isolate.ts";
 
 const inputs = {
   appUrl: "http://127.0.0.1:4321",
@@ -33,18 +29,18 @@ async function fixture() {
     await mkdtemp(path.join(os.tmpdir(), "review-test-")),
   );
   const repositoryDirectory = path.join(directory, "repository");
-  const accountHome = path.join(directory, "account-home");
-  await mkdir(accountHome);
   await mkdir(repositoryDirectory);
   await mkdir(path.join(repositoryDirectory, "src"));
+  const proxyInformationFile = path.join(directory, "proxy.json");
+  await writeFile(proxyInformationFile, JSON.stringify({ port: 12345 }));
   return {
     directory,
     repositoryDirectory,
-    accountHome,
+    runnerTemporaryDirectory: directory,
+    proxyInformationFile,
     outputsFile: path.join(directory, "outputs"),
   };
 }
-
 test("validates explicit route, viewport, URL, and timeout inputs", () => {
   assert.deepEqual(parseReviewInputs(inputs).scope, ["/", "/services/"]);
   for (const invalid of [
@@ -86,297 +82,266 @@ test("rejects traversal, environment scopes, and escaped symlinks", async () => 
   );
 });
 
-test("browser configuration returns images, uses isolated Chromium, and enables source delegation", () => {
-  const configuration = createBrowserConfiguration({
-    browserCliPath: "/action/browser.js",
-    evidenceDirectory: "/tmp/evidence",
-  });
-  assert.match(configuration, /multi_agent = true/);
-  assert.match(configuration, /"--image-responses","allow"/);
-  assert.match(configuration, /"--output-dir","\/tmp\/evidence"/);
-  assert.match(configuration, /required = true/);
-  assert.match(configuration, /browser_take_screenshot/);
-  assert.match(configuration, /browser_evaluate/);
-  assert.doesNotMatch(
-    configuration,
-    /browser_run_code|browser_file_upload|browser_fill_form/,
-  );
+test("maps GitHub inputs to the normal core entry point and preserves core outcomes", async () => {
+  for (const status of ["complete", "incomplete"]) {
+    const paths = await fixture();
+    const runIssues =
+      status === "incomplete"
+        ? [
+            {
+              severity: "warning",
+              code: "coverage",
+              message: "Some states unreachable",
+            },
+          ]
+        : [];
+    const result = await runDesignReviewAction({
+      ...paths,
+      ...inputs,
+      sourceScope: "src",
+      review: async (request, outputDirectory, options) => {
+        assert.equal(
+          request.sourceDirectory,
+          path.join(paths.repositoryDirectory, "src"),
+        );
+        assert.deepEqual(request.scope, ["/", "/services/"]);
+        assert.deepEqual(request.viewports, [{ width: 390, height: 844 }]);
+        assert.equal(request.reviewTimeoutMs, 600000);
+        assert.equal(options.responsesProxyUrl, "http://127.0.0.1:12345/v1");
+        assert.ok(path.isAbsolute(request.evidenceDirectory));
+        assert.notEqual(request.evidenceDirectory, outputDirectory);
+        return { status, runIssues, outputDirectory, report: { issues: [] } };
+      },
+    });
+    assert.equal(result.status, status);
+    assert.deepEqual(
+      JSON.parse(
+        await readFile(
+          path.join(result.outputDirectory, "run-status.json"),
+          "utf8",
+        ),
+      ),
+      { status, runIssues },
+    );
+    assert.match(
+      await readFile(paths.outputsFile, "utf8"),
+      new RegExp(`review-status=${status}`),
+    );
+  }
 });
 
-test("prepare passes generic request to bundled core and keeps raw files outside artifact", async () => {
-  const fixturePaths = await fixture();
-  const calls = [];
-  const state = await prepareDesignReviewRun({
-    ...fixturePaths,
-    ...inputs,
-    sourceScope: "src",
-    runnerTemporaryDirectory: fixturePaths.directory,
-    run: async (executable, args) => {
-      calls.push([executable, args]);
-      return "";
+test("typed core failures produce diagnostic artifacts and remain failures", async () => {
+  const paths = await fixture();
+  const runIssues = [
+    {
+      severity: "error",
+      code: "agent-timeout",
+      message: "Review execution timed out",
     },
+  ];
+  const failure = Object.assign(new Error("Review execution timed out"), {
+    code: "agent-timeout",
+    runIssues,
   });
-  const request = JSON.parse(
-    await readFile(path.join(state.temporaryDirectory, "request.json"), "utf8"),
-  );
-  assert.equal(
-    request.sourceDirectory,
-    path.join(fixturePaths.repositoryDirectory, "src"),
-  );
-  assert.deepEqual(request.scope, ["/", "/services/"]);
-  assert.equal(request.reviewTimeoutMs, 600000);
-  assert.equal(calls[0][1][1], "prepare");
-  assert.equal(
-    await realpath(path.join(fixturePaths.accountHome, ".codex")),
-    path.join(state.temporaryDirectory, "codex-home"),
-  );
-  const preparedOutputs = await readFile(fixturePaths.outputsFile, "utf8");
-  assert.match(preparedOutputs, /codexHome=/);
-  assert.equal(path.dirname(state.responseFile), state.temporaryDirectory);
   await assert.rejects(
-    readFile(path.join(state.artifactDirectory, "index.html")),
+    runDesignReviewAction({
+      ...paths,
+      ...inputs,
+      review: async () => {
+        throw failure;
+      },
+    }),
+    (error) => error === failure,
+  );
+  const outputs = await readFile(paths.outputsFile, "utf8");
+  const artifactDirectory = outputs.match(
+    /design-qa-artifact-directory-path=(.+)/,
+  )[1];
+  assert.deepEqual(
+    JSON.parse(
+      await readFile(path.join(artifactDirectory, "run-status.json"), "utf8"),
+    ),
+    { status: "failed", runIssues },
+  );
+  assert.match(outputs, /review-status=failed/);
+  await assert.rejects(
+    readFile(path.join(artifactDirectory, "index.html")),
     /ENOENT/,
   );
 });
 
-test("preparation refuses stale artifact directories", async () => {
-  const fixturePaths = await fixture();
+test("unexpected failures do not copy raw errors or model output into diagnostics", async () => {
+  const paths = await fixture();
   await assert.rejects(
-    prepareDesignReviewRun({
-      ...fixturePaths,
+    runDesignReviewAction({
+      ...paths,
       ...inputs,
-      runnerTemporaryDirectory: fixturePaths.directory,
-      requestedArtifactDirectory: ".",
-      run: async () => "",
+      review: async () => {
+        throw new Error("raw response private text");
+      },
     }),
-    /already exists/,
+  );
+  const outputs = await readFile(paths.outputsFile, "utf8");
+  const artifactDirectory = outputs.match(
+    /design-qa-artifact-directory-path=(.+)/,
+  )[1];
+  assert.doesNotMatch(
+    await readFile(path.join(artifactDirectory, "run-status.json"), "utf8"),
+    /private text/,
   );
 });
 
-async function finalizationFixture(response) {
-  const fixturePaths = await fixture();
-  const state = {
-    temporaryDirectory: fixturePaths.directory,
-    artifactDirectory: path.join(fixturePaths.directory, "artifact"),
-    contextFile: path.join(fixturePaths.directory, "context.json"),
-    responseFile: path.join(fixturePaths.directory, "response.json"),
-    coreCliPath: "/core/cli.mjs",
+test("rejects stale report destinations and invalid proxy metadata before launching core", async () => {
+  const paths = await fixture();
+  let invoked = false;
+  const review = async () => {
+    invoked = true;
   };
-  const stateFile = path.join(fixturePaths.directory, "state.json");
-  await writeFile(stateFile, JSON.stringify(state));
-  if (response !== undefined)
-    await writeFile(state.responseFile, JSON.stringify(response));
-  return { ...fixturePaths, stateFile, state };
-}
+  await assert.rejects(
+    runDesignReviewAction({
+      ...paths,
+      ...inputs,
+      requestedArtifactDirectory: paths.repositoryDirectory,
+      review,
+    }),
+    /already exists/,
+  );
+  await writeFile(paths.proxyInformationFile, JSON.stringify({ port: "bad" }));
+  await assert.rejects(
+    runDesignReviewAction({ ...paths, ...inputs, review }),
+    /proxy port/,
+  );
+  assert.equal(invoked, false);
+});
 
-test("execution failure always publishes a diagnostic artifact and never claims complete", async () => {
-  const fixturePaths = await finalizationFixture();
-  const result = await finalizeDesignReviewRun({
-    ...fixturePaths,
-    codexOutcome: "failure",
-    run: async () => "",
+test("Action browser lockfile inputs match the bundled core runtime requirements", async () => {
+  const requirements = await runtimeRequirements();
+  assert.match(requirements.codex, /^\d+\.\d+\.\d+$/);
+});
+
+test("uses upstream setup only and the exact pinned Linux privilege boundary", async () => {
+  const action = await readFile(
+    new URL("../action.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(action, /Set up protected Codex authentication/);
+  assert.doesNotMatch(action, /prompt-file:|codex-args:|output-file:/);
+  assert.match(action, /scripts\/isolate\.ts/);
+  assert.match(action, /steps\.review\.outputs\.review-status/);
+  // A digest makes unreviewed edits to upstream's root/setpriv sequence fail loudly.
+  assert.equal(
+    createHash("sha256").update(LINUX_DROP_SUDO_SCRIPT).digest("hex"),
+    "263d62342d80486801c2612c9f5d2fde02ae7d8d587d6d9887e329a45f375177",
+  );
+  const credentials = await readFile(
+    new URL(
+      "./vendor/openai-codex-action/linuxCredentials.ts",
+      import.meta.url,
+    ),
+  );
+  assert.equal(
+    createHash("sha256").update(credentials).digest("hex"),
+    "aa75358ce28991c1fc20db9c177848b40a7ebd840ad1e5b095f93552c55301fe",
+  );
+  const dropSudo = await readFile(
+    new URL("./vendor/openai-codex-action/dropSudo.ts", import.meta.url),
+    "utf8",
+  );
+  const normalized = dropSudo
+    .replace("  type LinuxRunnerCredentials,", "  LinuxRunnerCredentials,")
+    .replace('"./linuxCredentials.ts"', '"./linuxCredentials"');
+  assert.equal(
+    createHash("sha256").update(normalized).digest("hex"),
+    "739e6b11444f71b8594e604d2712c07dc5d8cdf6a70767c8d078831bbe498bd4",
+  );
+});
+
+test("normal bundled core rejects invalid review requests without launching a model", async () => {
+  const paths = await fixture();
+  const { ReviewError } = await import("../dist/core/index.mjs");
+  await assert.rejects(
+    runDesignReviewAction({ ...paths, ...inputs, paths: '["/","/"]' }),
+    (error) => error instanceof ReviewError && error.code === "invalid-request",
+  );
+  const outputs = await readFile(paths.outputsFile, "utf8");
+  const artifactDirectory = outputs.match(
+    /design-qa-artifact-directory-path=(.+)/,
+  )[1];
+  const diagnostic = JSON.parse(
+    await readFile(path.join(artifactDirectory, "run-status.json"), "utf8"),
+  );
+  assert.equal(diagnostic.status, "failed");
+  assert.equal(diagnostic.runIssues[0].code, "invalid-request");
+});
+
+test("cancellation reaches core and remains a failed diagnostic outcome", async () => {
+  const paths = await fixture();
+  const controller = new AbortController();
+  const runIssues = [
+    { severity: "error", code: "cancelled", message: "Review cancelled" },
+  ];
+  const pending = runDesignReviewAction({
+    ...paths,
+    ...inputs,
+    signal: controller.signal,
+    review: async (_request, _outputDirectory, { signal }) => {
+      assert.equal(signal, controller.signal);
+      return await new Promise((_resolve, reject) => {
+        signal.addEventListener(
+          "abort",
+          () =>
+            reject(
+              Object.assign(new Error("Review cancelled"), {
+                code: "cancelled",
+                runIssues,
+              }),
+            ),
+          { once: true },
+        );
+        controller.abort();
+      });
+    },
   });
-  assert.equal(result.status, "failed");
-  const diagnostics = JSON.parse(
-    await readFile(
-      path.join(fixturePaths.state.artifactDirectory, "run-status.json"),
-      "utf8",
-    ),
-  );
-  assert.equal(diagnostics.runIssues[0].code, "agent_execution_failed");
-  assert.equal(diagnostics.runIssues[1].code, "agent_response_missing");
-  assert.equal(diagnostics.runIssues[1].severity, "warning");
-  assert.ok(
-    !diagnostics.runIssues.some(
-      (issue) => issue.code === "report_generation_failed",
-    ),
-  );
-  assert.ok(!JSON.stringify(diagnostics).includes("ENOENT"));
+  await assert.rejects(pending, (error) => error.code === "cancelled");
   assert.match(
-    await readFile(fixturePaths.outputsFile, "utf8"),
+    await readFile(paths.outputsFile, "utf8"),
     /review-status=failed/,
   );
 });
 
-test("complete findings report succeeds, warnings stay incomplete, invalid reports fail", async () => {
-  for (const [runIssues, expected] of [
-    [[], "complete"],
-    [
-      [
-        {
-          severity: "warning",
-          code: "coverage",
-          message: "Some states unreachable",
-        },
-      ],
-      "incomplete",
-    ],
-  ]) {
-    const fixturePaths = await finalizationFixture({
-      report: { findings: [{ severity: "critical" }] },
-      runIssues,
-    });
-    assert.equal(
-      (
-        await finalizeDesignReviewRun({
-          ...fixturePaths,
-          codexOutcome: "success",
-          run: async () => "",
-        })
-      ).status,
-      expected,
-    );
-  }
-  const fixturePaths = await finalizationFixture({
-    report: null,
-    runIssues: [],
-  });
-  assert.equal(
-    (
-      await finalizeDesignReviewRun({
-        ...fixturePaths,
-        codexOutcome: "success",
-        run: async () => {
-          throw new Error("Report invalid");
-        },
-      })
-    ).status,
-    "failed",
-  );
+test("outer launcher forwards cancellation to sudo and removes handlers after exit", async () => {
+  const { EventEmitter } = await import("node:events");
+  const { forwardCancellation } = await import("./isolate.ts");
+  const signalSource = new EventEmitter();
+  const child = new EventEmitter();
+  const forwarded = [];
+  child.kill = (signal) => forwarded.push(signal);
+  forwardCancellation(child, signalSource);
+  signalSource.emit("SIGINT");
+  signalSource.emit("SIGTERM");
+  assert.deepEqual(forwarded, ["SIGINT", "SIGTERM"]);
+  child.emit("exit", 130);
+  assert.equal(signalSource.listenerCount("SIGINT"), 0);
+  assert.equal(signalSource.listenerCount("SIGTERM"), 0);
 });
 
-test("bundled core prepares and packages a real screenshot with the existing viewer", async () => {
-  const fixturePaths = await fixture();
-  const imageFile = new URL("./fixtures/browser-probe.png", import.meta.url);
-  const imageBytes = await readFile(imageFile);
-  const width = imageBytes.readUInt32BE(16);
-  const height = imageBytes.readUInt32BE(20);
-  const state = await prepareDesignReviewRun({
-    ...fixturePaths,
-    appUrl: inputs.appUrl,
-    paths: '["/"]',
-    viewports: JSON.stringify([{ width, height }]),
-    sourceScope: "src",
-    runnerTemporaryDirectory: fixturePaths.directory,
-  });
-  await copyFile(imageFile, path.join(state.evidenceDirectory, "home.png"));
-  await writeFile(
-    state.responseFile,
-    JSON.stringify({
-      report: {
-        schemaVersion: "0.1",
-        review: {
-          title: "Local browser fixture review",
-          reviewedAt: "2026-10-27T12:00:00Z",
-          baseUrl: inputs.appUrl + "/",
-          scope: "Home page",
-          evidenceSummary:
-            "Inspected real screenshot pixels from the local fixture.",
-          areas: [],
-          limitations: [],
-          outstandingQuestions: [],
-        },
-        issues: [],
-        warnings: [],
-      },
-      captures: [
-        {
-          image: "home.png",
-          route: "/",
-          viewport: { width, height },
-          imageDimensions: { width, height },
-          scroll: { x: 0, y: 0 },
-          state: "Initial page",
-        },
-      ],
-      runIssues: [],
-    }),
-  );
-  const result = await finalizeDesignReviewRun({
-    ...fixturePaths,
-    stateFile: path.join(state.temporaryDirectory, "state.json"),
-    codexOutcome: "success",
-  });
-  assert.equal(result.status, "complete", JSON.stringify(result));
-  const viewer = await readFile(
-    path.join(state.artifactDirectory, "index.html"),
+test("documented Action defaults stay aligned with the core defaults", async () => {
+  const { reviewDefaults } = await import("../dist/core/index.mjs");
+  const parsed = parseReviewInputs({ appUrl: inputs.appUrl });
+  assert.deepEqual(parsed.scope, [...reviewDefaults.scope]);
+  assert.deepEqual(parsed.viewports, reviewDefaults.viewports);
+  assert.equal(parsed.reviewTimeoutMs, reviewDefaults.reviewTimeoutMs);
+  const action = await readFile(
+    new URL("../action.yml", import.meta.url),
     "utf8",
   );
-  assert.match(viewer, /design-qa-report/);
   assert.ok(
-    (
-      await readFile(path.join(state.artifactDirectory, "report.json"), "utf8")
-    ).includes("Local browser fixture review"),
+    action.includes(`default: '${JSON.stringify(reviewDefaults.scope)}'`),
   );
-  const evidence = JSON.parse(
-    await readFile(
-      path.join(state.artifactDirectory, "run-evidence.json"),
-      "utf8",
-    ),
+  assert.ok(
+    action.includes(`default: '${JSON.stringify(reviewDefaults.viewports)}'`),
   );
-  assert.equal(evidence.captures.length, 1);
-  assert.match(evidence.captures[0].image, /^images\//);
-  assert.deepEqual(
-    await readFile(
-      path.join(state.artifactDirectory, evidence.captures[0].image),
-    ),
-    imageBytes,
+  assert.ok(
+    action.includes(`default: "${reviewDefaults.reviewTimeoutMs / 60000}"`),
   );
-});
-
-test("default account config resolves through trusted home when CODEX_HOME is cleared", async () => {
-  const { directory, accountHome } = await fixture();
-  const codexHome = path.join(directory, "trusted-codex-home");
-  await mkdir(codexHome);
-  const expectedConfiguration =
-    'model_provider = "test-responses-proxy"\n' +
-    createBrowserConfiguration({
-      browserCliPath: "/action/browser.js",
-      evidenceDirectory: "/tmp/evidence",
-    });
-  await writeFile(path.join(codexHome, "config.toml"), expectedConfiguration);
-  const alias = await linkDefaultCodexHome({ accountHome, codexHome });
-  assert.ok((await lstat(alias)).isSymbolicLink());
-  assert.equal(await realpath(alias), codexHome);
-  // A fresh explicit environment emulates sudo dropping CODEX_HOME without
-  // reading or forwarding any real environment values or credentials.
-  const { stdout } = await promisify(execFile)(
-    process.execPath,
-    [
-      "--input-type=module",
-      "--eval",
-      'import { readFile } from "node:fs/promises"; import { homedir } from "node:os"; import path from "node:path"; process.stdout.write(await readFile(path.join(homedir(), ".codex", "config.toml"), "utf8"));',
-    ],
-    { env: { HOME: accountHome } },
-  );
-  assert.equal(stdout, expectedConfiguration);
-});
-
-test("default account alias refuses existing files, directories, and symlinks without changing them", async () => {
-  for (const existingKind of [
-    "file",
-    "directory",
-    "symlink",
-    "broken-symlink",
-  ]) {
-    const { directory, accountHome } = await fixture();
-    const codexHome = path.join(directory, "trusted-codex-home");
-    await mkdir(codexHome);
-    const alias = path.join(accountHome, ".codex");
-    if (existingKind === "file")
-      await writeFile(alias, "existing configuration");
-    if (existingKind === "directory") await mkdir(alias);
-    if (existingKind === "symlink") await symlink(codexHome, alias, "dir");
-    if (existingKind === "broken-symlink")
-      await symlink(path.join(directory, "missing"), alias, "dir");
-    const before = await lstat(alias);
-    await assert.rejects(
-      linkDefaultCodexHome({ accountHome, codexHome }),
-      /already exists/,
-    );
-    const after = await lstat(alias);
-    assert.equal(after.ino, before.ino);
-    if (existingKind === "file")
-      assert.equal(await readFile(alias, "utf8"), "existing configuration");
-  }
 });

@@ -20,7 +20,7 @@ inputs:
     description: Optional additional review focus.
     default: ""
   timeout-minutes:
-    description: Requested model review budget, from 1 to 30 minutes; the caller step timeout enforces runtime.
+    description: Agent execution timeout, from 1 to 30 minutes; bound the whole Action step separately.
     default: "10"
   design-qa-artifact-directory-path:
     description: Optional new report directory whose parent already exists.
@@ -28,10 +28,10 @@ inputs:
 outputs:
   design-qa-artifact-directory-path:
     description: Local report or diagnostic directory to upload, including on review failure.
-    value: ${{ steps.finalize.outputs.design-qa-artifact-directory-path }}
+    value: ${{ steps.review.outputs.design-qa-artifact-directory-path }}
   review-status:
     description: complete, incomplete, or failed; design findings do not fail execution.
-    value: ${{ steps.finalize.outputs.review-status }}
+    value: ${{ steps.review.outputs.review-status }}
 # This reusable Action supplies steps; the caller workflow chooses triggers and the runner.
 runs:
   using: composite
@@ -54,9 +54,25 @@ runs:
       run: |
         npm ci --prefix "$DESIGN_REVIEW_ACTION_DIRECTORY_PATH" --omit=dev --ignore-scripts
         node "$DESIGN_REVIEW_ACTION_DIRECTORY_PATH/node_modules/playwright/cli.js" install --with-deps chromium
-    # The instructions name the checkout and scope; Codex reads relevant source itself.
-    - name: Prepare design review
-      id: prepare
+    # Runtime versions belong to core; the committed lockfile must match its requirements.
+    - name: Read shared runtime requirements
+      id: runtime
+      shell: bash
+      env:
+        DESIGN_REVIEW_ACTION_DIRECTORY_PATH: ${{ github.action_path }}
+        RUNNER_TEMPORARY_DIRECTORY_PATH: ${{ runner.temp }}
+      run: node "$DESIGN_REVIEW_ACTION_DIRECTORY_PATH/scripts/designReview.mjs" runtime "$GITHUB_OUTPUT" "$RUNNER_TEMPORARY_DIRECTORY_PATH"
+    # Setup only: upstream keeps the API key in its proxy; our core launches Codex.
+    - name: Set up protected Codex authentication
+      uses: openai/codex-action@86365089eb2b84e0a8fb0717b304f8bdcb13b20e # v1.12
+      with:
+        openai-api-key: ${{ inputs.openai-api-key }}
+        codex-version: ${{ steps.runtime.outputs.codex-version }}
+        codex-home: ${{ steps.runtime.outputs.codex-home }}
+        safety-strategy: read-only
+    # The upstream Linux launcher drops privileges before our trusted adapter calls core.
+    - name: Run design review
+      id: review
       shell: bash
       env:
         DESIGN_REVIEW_ACTION_DIRECTORY_PATH: ${{ github.action_path }}
@@ -69,28 +85,5 @@ runs:
         DESIGN_QA_REVIEW_FOCUS: ${{ inputs.review-focus }}
         DESIGN_QA_TIMEOUT_MINUTES: ${{ inputs.timeout-minutes }}
         REQUESTED_DESIGN_QA_ARTIFACT_DIRECTORY_PATH: ${{ inputs.design-qa-artifact-directory-path }}
-      run: node "$DESIGN_REVIEW_ACTION_DIRECTORY_PATH/scripts/designReview.mjs" prepare "$CUSTOMER_REPOSITORY_DIRECTORY_PATH" "$RUNNER_TEMPORARY_DIRECTORY_PATH" "$DESIGN_QA_APP_URL" "$DESIGN_QA_PATHS" "$DESIGN_QA_SOURCE_SCOPE" "$DESIGN_QA_VIEWPORTS" "$DESIGN_QA_REVIEW_FOCUS" "$DESIGN_QA_TIMEOUT_MINUTES" "$REQUESTED_DESIGN_QA_ARTIFACT_DIRECTORY_PATH" "$GITHUB_OUTPUT"
-    # Reuse upstream key proxy and privilege isolation; later steps cannot depend on sudo.
-    - name: Run design review
-      id: review
-      uses: openai/codex-action@86365089eb2b84e0a8fb0717b304f8bdcb13b20e # v1.12
-      with:
-        openai-api-key: ${{ inputs.openai-api-key }}
-        working-directory: ${{ github.workspace }}
-        codex-home: ${{ steps.prepare.outputs.codexHome }}
-        prompt-file: ${{ steps.prepare.outputs.promptFile }}
-        # The model's final JSON is orchestration output; browser tools save separate evidence.
-        output-file: ${{ steps.prepare.outputs.responseFile }}
-        permission-profile: ":read-only"
-        safety-strategy: drop-sudo
-        codex-args: '["--ephemeral"]'
-    # Trusted orchestration writes the artifact after Codex has finished with read-only tools.
-    - name: Create design review artifact
-      id: finalize
-      if: ${{ always() && steps.prepare.outcome == 'success' }}
-      shell: bash
-      env:
-        DESIGN_REVIEW_ACTION_DIRECTORY_PATH: ${{ github.action_path }}
-        DESIGN_REVIEW_STATE_FILE: ${{ steps.prepare.outputs.stateFile }}
-        DESIGN_REVIEW_CODEX_OUTCOME: ${{ steps.review.outcome }}
-      run: node "$DESIGN_REVIEW_ACTION_DIRECTORY_PATH/scripts/designReview.mjs" finalize "$DESIGN_REVIEW_STATE_FILE" "$DESIGN_REVIEW_CODEX_OUTCOME" "$GITHUB_OUTPUT"
+        DESIGN_REVIEW_PROXY_INFORMATION_FILE: ${{ steps.runtime.outputs.codex-home }}/${{ github.run_id }}.json
+      run: node --disable-sigusr1 "$DESIGN_REVIEW_ACTION_DIRECTORY_PATH/scripts/isolate.ts" run node --disable-sigusr1 "$DESIGN_REVIEW_ACTION_DIRECTORY_PATH/scripts/designReview.mjs" run "$CUSTOMER_REPOSITORY_DIRECTORY_PATH" "$RUNNER_TEMPORARY_DIRECTORY_PATH" "$DESIGN_QA_APP_URL" "$DESIGN_QA_PATHS" "$DESIGN_QA_SOURCE_SCOPE" "$DESIGN_QA_VIEWPORTS" "$DESIGN_QA_REVIEW_FOCUS" "$DESIGN_QA_TIMEOUT_MINUTES" "$REQUESTED_DESIGN_QA_ARTIFACT_DIRECTORY_PATH" "$GITHUB_OUTPUT" "$DESIGN_REVIEW_PROXY_INFORMATION_FILE"

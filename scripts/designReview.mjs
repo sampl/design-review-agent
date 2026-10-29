@@ -1,26 +1,20 @@
+// Translates GitHub inputs and outputs; the bundled core owns review execution.
 import {
   appendFile,
   mkdir,
-  lstat,
-  symlink,
   mkdtemp,
   readFile,
   realpath,
   stat,
   writeFile,
 } from "node:fs/promises";
-import { spawn } from "node:child_process";
 import path from "node:path";
-import { userInfo } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const ACTION_DIRECTORY = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const CORE_CLI_PATH = path.join(ACTION_DIRECTORY, "dist/core/cli.mjs");
-export const PLAYWRIGHT_MCP_VERSION = "0.0.80";
-export const PLAYWRIGHT_VERSION = "1.63.0-alpha-2026-08-31";
 
 export async function resolveSourceDirectory(repositoryDirectory, sourceScope) {
   if (
@@ -62,23 +56,6 @@ export async function resolveSourceDirectory(repositoryDirectory, sourceScope) {
   if (!(await stat(sourcePath)).isDirectory())
     throw new Error("source-scope must name a directory");
   return sourcePath;
-}
-
-export async function linkDefaultCodexHome({ accountHome, codexHome }) {
-  const defaultCodexHome = path.join(accountHome, ".codex");
-  // Ubuntu's sudo-rs may discard CODEX_HOME despite sudo -E. Keep Codex's
-  // account-home fallback pointed at the same trusted proxy and browser config.
-  try {
-    await lstat(defaultCodexHome);
-    throw new Error(
-      "The account's default .codex path already exists; use a fresh disposable runner",
-    );
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-  }
-  // symlink is exclusive: a competing creation after lstat must fail, never overwrite.
-  await symlink(codexHome, defaultCodexHome, "dir");
-  return defaultCodexHome;
 }
 
 export function parseReviewInputs({
@@ -157,41 +134,6 @@ export function parseReviewInputs({
   };
 }
 
-export function createBrowserConfiguration({
-  browserCliPath,
-  evidenceDirectory,
-}) {
-  return `[features]\nmulti_agent = true\n\n[mcp_servers.browser]\ncommand = "node"\nargs = ${JSON.stringify([browserCliPath, "--headless", "--isolated", "--browser", "chromium", "--image-responses", "allow", "--output-dir", evidenceDirectory])}\nrequired = true\nstartup_timeout_sec = 60\ntool_timeout_sec = 60\ndefault_tools_approval_mode = "approve"\nenabled_tools = ["browser_navigate", "browser_snapshot", "browser_evaluate", "browser_take_screenshot", "browser_resize", "browser_click", "browser_hover", "browser_press_key", "browser_wait_for", "browser_tabs", "browser_close", "browser_console_messages"]\n`;
-}
-
-export async function runCommand(executable, args, { cwd, input } = {}) {
-  return await new Promise((resolve, reject) => {
-    const child = spawn(executable, args, {
-      cwd,
-      stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk;
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk;
-    });
-    child.on("error", reject);
-    child.on("close", (code) =>
-      code === 0
-        ? resolve(stdout.trim())
-        : reject(
-            new Error(
-              `${path.basename(executable)} exited with code ${code}: ${stderr.slice(-2000)}`,
-            ),
-          ),
-    );
-    if (input !== undefined) child.stdin.end(input);
-  });
-}
-
 async function publishOutputs(outputFile, values) {
   for (const value of Object.values(values))
     if (/[\r\n]/u.test(String(value)))
@@ -204,20 +146,41 @@ async function publishOutputs(outputFile, values) {
   );
 }
 
-export async function prepareDesignReviewRun({
+export async function runtimeRequirements(actionDirectory = ACTION_DIRECTORY) {
+  const requirements = JSON.parse(
+    await readFile(
+      path.join(actionDirectory, "dist/core/runtimeRequirements.json"),
+      "utf8",
+    ),
+  );
+  const packageData = JSON.parse(
+    await readFile(path.join(actionDirectory, "package.json"), "utf8"),
+  );
+  if (
+    packageData.dependencies["@playwright/mcp"] !==
+      requirements.playwrightMcp ||
+    packageData.dependencies.playwright !== requirements.playwright
+  )
+    throw new Error(
+      "Action browser dependencies must match the bundled core runtime requirements",
+    );
+  return requirements;
+}
+
+export async function runDesignReviewAction({
   repositoryDirectory,
   runnerTemporaryDirectory,
   appUrl,
   paths,
   sourceScope = ".",
-  accountHome = userInfo().homedir,
   viewports,
   reviewFocus,
   timeoutMinutes,
   requestedArtifactDirectory = "",
   outputsFile,
-  coreCliPath = CORE_CLI_PATH,
-  run = runCommand,
+  proxyInformationFile,
+  signal,
+  review,
 }) {
   const reviewInputs = parseReviewInputs({
     appUrl,
@@ -236,7 +199,7 @@ export async function prepareDesignReviewRun({
   const artifactDirectory = requestedArtifactDirectory
     ? path.resolve(repositoryDirectory, requestedArtifactDirectory)
     : path.join(temporaryDirectory, "artifact");
-  // Refuse existing destinations so a failed run cannot publish an earlier success.
+  // A fresh destination prevents a failed review from publishing an older successful report.
   try {
     await stat(artifactDirectory);
     throw new Error("Artifact directory already exists");
@@ -246,149 +209,68 @@ export async function prepareDesignReviewRun({
   if (!(await stat(path.dirname(artifactDirectory))).isDirectory())
     throw new Error("Artifact parent must exist");
   const evidenceDirectory = path.join(temporaryDirectory, "evidence");
-  const codexHome = path.join(temporaryDirectory, "codex-home");
-  await Promise.all([mkdir(evidenceDirectory), mkdir(codexHome)]);
-  const promptFile = path.join(temporaryDirectory, "prompt.md");
-  const schemaFile = path.join(temporaryDirectory, "schema.json");
-  const responseFile = path.join(temporaryDirectory, "response.json");
-  const contextFile = path.join(temporaryDirectory, "context.json");
-  const requestFile = path.join(temporaryDirectory, "request.json");
-  const stateFile = path.join(temporaryDirectory, "state.json");
-  const browserCliPath = path.join(
-    ACTION_DIRECTORY,
-    "node_modules/@playwright/mcp/cli.js",
+  const serverInformation = JSON.parse(
+    await readFile(proxyInformationFile, "utf8"),
   );
-  await writeFile(
-    requestFile,
-    JSON.stringify({ ...reviewInputs, sourceDirectory, evidenceDirectory }),
-  );
-  await run(process.execPath, [
-    coreCliPath,
-    "prepare",
-    "--request",
-    requestFile,
-    "--context",
-    contextFile,
-    "--prompt",
-    promptFile,
-    "--schema",
-    schemaFile,
-  ]);
-  await writeFile(
-    path.join(codexHome, "config.toml"),
-    createBrowserConfiguration({ browserCliPath, evidenceDirectory }),
-  );
-  await linkDefaultCodexHome({ accountHome, codexHome });
-  const state = {
-    repositoryDirectory,
-    artifactDirectory,
-    evidenceDirectory,
-    contextFile,
-    responseFile,
-    temporaryDirectory,
-    coreCliPath,
-  };
-  await writeFile(stateFile, JSON.stringify(state));
-  await publishOutputs(outputsFile, {
-    promptFile,
-    schemaFile,
-    responseFile,
-    codexHome,
-    stateFile,
-  });
-  return state;
-}
-
-export async function finalizeDesignReviewRun({
-  stateFile,
-  codexOutcome,
-  outputsFile,
-  run = runCommand,
-}) {
-  const state = JSON.parse(await readFile(stateFile, "utf8"));
-  const runIssues = [];
-  let reviewStatus = "complete";
-  if (codexOutcome !== "success") {
-    reviewStatus = "failed";
-    runIssues.push({
-      severity: "error",
-      code: "agent_execution_failed",
-      message:
-        "Codex did not finish successfully. The review may have timed out or encountered a runtime error; inspect the GitHub step log. No complete assessment is claimed.",
-    });
-  }
-  let response;
+  if (
+    !Number.isInteger(serverInformation.port) ||
+    serverInformation.port < 1 ||
+    serverInformation.port > 65535
+  )
+    throw new Error("Invalid Responses API proxy port");
+  const responsesProxyUrl = `http://127.0.0.1:${serverInformation.port}/v1`;
+  const executeReview =
+    review ?? (await import("../dist/core/index.mjs")).runReview;
+  let status;
+  let runIssues;
+  let failure;
   try {
-    response = JSON.parse(await readFile(state.responseFile, "utf8"));
-    if (Array.isArray(response.runIssues))
-      runIssues.push(...response.runIssues);
-    // Keep orchestration state and raw model output outside the directory callers upload.
-    const finalizedOutput = await run(process.execPath, [
-      state.coreCliPath,
-      "finalize",
-      "--context",
-      state.contextFile,
-      "--response",
-      state.responseFile,
-      "--output",
-      state.artifactDirectory,
-    ]);
-    if (finalizedOutput) {
-      const finalized = JSON.parse(finalizedOutput);
-      if (!["complete", "incomplete"].includes(finalized.status))
-        throw new Error("Core returned an invalid review status");
-      if (reviewStatus === "complete") reviewStatus = finalized.status;
-      for (const issue of finalized.runIssues ?? []) {
-        if (
-          !runIssues.some(
-            (existing) =>
-              existing.code === issue.code &&
-              existing.message === issue.message,
-          )
-        )
-          runIssues.push(issue);
-      }
-    }
-    if (reviewStatus === "complete" && runIssues.length)
-      reviewStatus = runIssues.some((issue) => issue.severity === "error")
-        ? "failed"
-        : "incomplete";
-  } catch (error) {
-    reviewStatus = "failed";
-    const responseMissing =
-      error.code === "ENOENT" && error.path === state.responseFile;
-    runIssues.push(
-      responseMissing
-        ? {
-            severity: codexOutcome === "success" ? "error" : "warning",
-            code: "agent_response_missing",
-            message:
-              "Codex did not produce the required response. No report was generated.",
-          }
-        : {
-            severity: "error",
-            code: "report_generation_failed",
-            message: error.message,
-          },
+    const result = await executeReview(
+      { ...reviewInputs, sourceDirectory, evidenceDirectory },
+      artifactDirectory,
+      { responsesProxyUrl, signal },
     );
+    status = result.status;
+    runIssues = result.runIssues;
+  } catch (error) {
+    failure = error;
+    status = "failed";
+    runIssues =
+      Array.isArray(error.runIssues) && error.runIssues.length
+        ? error.runIssues
+        : [
+            {
+              severity: "error",
+              code: "review-execution-failed",
+              message:
+                "Design review could not finish; inspect the runner log.",
+            },
+          ];
   }
-  await mkdir(state.artifactDirectory, { recursive: true });
+  await mkdir(artifactDirectory, { recursive: true });
   await writeFile(
-    path.join(state.artifactDirectory, "run-status.json"),
-    JSON.stringify({ status: reviewStatus, runIssues }, null, 2),
+    path.join(artifactDirectory, "run-status.json"),
+    JSON.stringify({ status, runIssues }, null, 2),
     { flag: "wx" },
   );
-  // Publish a diagnostic artifact even when execution failed, so failure survives upload.
   await publishOutputs(outputsFile, {
-    "design-qa-artifact-directory-path": state.artifactDirectory,
-    "review-status": reviewStatus,
+    "design-qa-artifact-directory-path": artifactDirectory,
+    "review-status": status,
   });
-  return { status: reviewStatus, runIssues };
+  if (failure) throw failure;
+  return { status, runIssues, outputDirectory: artifactDirectory };
 }
 
 async function main() {
   const [command, ...args] = process.argv.slice(2);
-  if (command === "prepare") {
+  if (command === "runtime") {
+    const requirements = await runtimeRequirements();
+    const codexHome = await mkdtemp(path.join(args[1], "design-review-codex-"));
+    await publishOutputs(args[0], {
+      "codex-version": requirements.codex,
+      "codex-home": codexHome,
+    });
+  } else if (command === "run") {
     const [
       repositoryDirectory,
       runnerTemporaryDirectory,
@@ -400,28 +282,32 @@ async function main() {
       timeoutMinutes,
       requestedArtifactDirectory,
       outputsFile,
+      proxyInformationFile,
     ] = args;
-    await prepareDesignReviewRun({
-      repositoryDirectory,
-      runnerTemporaryDirectory,
-      appUrl,
-      paths,
-      sourceScope,
-      viewports,
-      reviewFocus,
-      timeoutMinutes,
-      requestedArtifactDirectory,
-      outputsFile,
-    });
-  } else if (command === "finalize") {
-    const [stateFile, codexOutcome, outputsFile] = args;
-    const result = await finalizeDesignReviewRun({
-      stateFile,
-      codexOutcome,
-      outputsFile,
-    });
-    if (result.status === "failed") process.exitCode = 1;
-  } else throw new Error("Expected prepare or finalize command");
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    process.once("SIGINT", abort);
+    process.once("SIGTERM", abort);
+    try {
+      await runDesignReviewAction({
+        signal: controller.signal,
+        repositoryDirectory,
+        runnerTemporaryDirectory,
+        appUrl,
+        paths,
+        sourceScope,
+        viewports,
+        reviewFocus,
+        timeoutMinutes,
+        requestedArtifactDirectory,
+        outputsFile,
+        proxyInformationFile,
+      });
+    } finally {
+      process.removeListener("SIGINT", abort);
+      process.removeListener("SIGTERM", abort);
+    }
+  } else throw new Error("Expected runtime or run command");
 }
 if (
   process.argv[1] &&
@@ -429,5 +315,5 @@ if (
 )
   main().catch((error) => {
     console.error(error.message);
-    process.exitCode = 1;
+    process.exitCode = error.code === "cancelled" ? 130 : 1;
   });
