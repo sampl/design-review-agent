@@ -1,0 +1,4 @@
+dist/
+scripts/vendor/
+package-lock.json
+pnpm-lock.yaml

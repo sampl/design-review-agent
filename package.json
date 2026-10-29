@@ -9,18 +9,22 @@
   },
   "scripts": {
     "test": "node --test scripts/*.test.mjs",
-    "lint": "node --check scripts/designReview.mjs && node --check scripts/designReview.test.mjs && node --check scripts/browserProbe.mjs && node --check scripts/isolate.ts",
+    "lint": "eslint .",
     "probe:browser": "node scripts/browserProbe.mjs",
-    "format": "prettier --write action.yml README.md DEVELOPERS.md package.json scripts/*.mjs scripts/isolate.ts",
-    "format:check": "prettier --check action.yml README.md DEVELOPERS.md package.json scripts/*.mjs scripts/isolate.ts",
-    "spellcheck": "cspell --config cspell.config.yaml README.md DEVELOPERS.md action.yml scripts/*.mjs scripts/isolate.ts"
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "spellcheck": "cspell --config cspell.config.yaml"
   },
   "dependencies": {
     "@playwright/mcp": "0.0.80",
     "playwright": "1.63.0-alpha-2026-08-31"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
     "cspell": "9.6.2",
-    "prettier": "3.6.2"
+    "eslint": "10.13.0",
+    "globals": "17.13.0",
+    "prettier": "3.6.2",
+    "typescript-eslint": "8.72.1"
   }
 }

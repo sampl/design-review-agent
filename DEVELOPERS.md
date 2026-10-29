@@ -43,6 +43,8 @@ Everything runs in your GitHub job. The browser can reach localhost because it r
 - [scripts/browserProbe.mjs](scripts/browserProbe.mjs) — Local browser probe for read-only measurements, inline PNG responses, and identical saved screenshots without a model or API key.
 - [package.json](package.json) and [package-lock.json](package-lock.json) — Runtime requirements, commands, and pinned dependencies.
 - [cspell.config.yaml](cspell.config.yaml) — Package spelling configuration.
+- [eslint.config.mjs](eslint.config.mjs) — Recommended JavaScript and TypeScript lint rules and Node globals.
+- [.prettierignore](.prettierignore) — Formatting exclusions for generated code, vendored code, and lockfiles.
 - [.gitignore](.gitignore) — Installed dependency exclusions.
 - [dist/core/](dist/core/) — Generated shared review engine, rubric, schema, viewer, and source manifest. Regenerate from the monorepo rather than editing these files.
 
@@ -59,8 +61,9 @@ Update this list when files are added, moved, or removed.
 
 - Use Node 24. Run `npm ci` to install the locked dependencies.
 - `npm test` checks GitHub input/output handling and the pinned isolation setup without API calls. Core owns the review-engine and report-packaging unit tests.
-- `npm run lint` checks JavaScript and native TypeScript syntax. Node 24 runs the small TypeScript isolation entry point directly.
+- `npm run lint` checks JavaScript and TypeScript with ESLint's recommended rules. Node 24 runs the small TypeScript isolation entry point directly.
 - `npm run format:check` and `npm run spellcheck` check formatting and spelling.
+- `npm run format` applies formatting. These tools discover files automatically; their configurations exclude generated `dist/` and upstream `scripts/vendor/` code. Formatting and spelling also exclude dependency lockfiles.
 - Run `npx playwright install chromium`, then `npm run probe:browser` to verify that MCP returns image pixels and saves an identical PNG. This fixture check needs no model or API key.
 
 ## Testing

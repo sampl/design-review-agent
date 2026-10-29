@@ -1,6 +1,15 @@
 version: "0.2"
 language: en
+files:
+  - "**/*.{md,yml,yaml,json,js,mjs,cjs,ts}"
+ignorePaths:
+  - node_modules/
+  - dist/
+  - scripts/vendor/
+  - package-lock.json
+  - pnpm-lock.yaml
 words:
+  - lockfiles
   - sampl
   - viewports
   - sigusr
