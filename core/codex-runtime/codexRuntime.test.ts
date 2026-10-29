@@ -1,4 +1,5 @@
 // Exercises actual subprocess transport without invoking a model or real browser.
+import { fixtureValue } from "../report-format/fixtures/contract.ts";
 import assert from "node:assert/strict";
 import { afterAll, beforeAll, it } from "vitest";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -7,7 +8,7 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { executeCodex, runtimeRequirements } from "./codexRuntime.ts";
 import { ReviewError } from "../run-review/reviewError.ts";
-import type { PreparedReview } from "../run-review/runReview.ts";
+import type { PreparedReview } from "../run-review/reviewLifecycle.ts";
 
 let directory: string;
 beforeAll(async () => {
@@ -80,7 +81,7 @@ it("launches one read-only runtime with isolated pixel-returning browser and pla
   assert.ok(invocation.args.includes("--ignore-rules"));
   assert.ok(invocation.args.includes("--skip-git-repo-check"));
   assert.notEqual(
-    invocation.args[invocation.args.indexOf("--cd") + 1],
+    fixtureValue(invocation.args[invocation.args.indexOf("--cd") + 1]),
     directory,
   );
   assert.match(
@@ -89,7 +90,7 @@ it("launches one read-only runtime with isolated pixel-returning browser and pla
   );
   assert.equal(invocation.args.includes("--ephemeral"), false);
   assert.equal(
-    invocation.args[invocation.args.indexOf("--sandbox") + 1],
+    fixtureValue(invocation.args[invocation.args.indexOf("--sandbox") + 1]),
     "read-only",
   );
   const browserConfig = invocation.args.find((value) =>

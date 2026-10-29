@@ -121,15 +121,17 @@ try {
     (filename) => filename.endsWith(".png"),
   );
   assert.equal(screenshotFiles.length, 1);
+  const screenshotFile = screenshotFiles[0];
+  assert.ok(screenshotFile);
   assert.deepEqual(
-    await readFile(path.join(evidenceDirectory, screenshotFiles[0])),
+    await readFile(path.join(evidenceDirectory, screenshotFile)),
     imageBytes,
   );
   console.log(
     JSON.stringify({
       status: "passed",
       inlineImageBytes: imageBytes.length,
-      screenshotFile: path.join(evidenceDirectory, screenshotFiles[0]),
+      screenshotFile: path.join(evidenceDirectory, screenshotFile),
     }),
   );
 } finally {

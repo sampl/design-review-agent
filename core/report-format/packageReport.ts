@@ -59,10 +59,11 @@ const crcTable = Array.from({ length: 256 }, (_, value) => {
   return checksum >>> 0;
 });
 
+// The 256-entry table covers every masked byte index below.
 function pngChecksum(bytes: Buffer): number {
   let checksum = 0xffffffff;
   for (const byte of bytes)
-    checksum = (checksum >>> 8) ^ crcTable[(checksum ^ byte) & 255];
+    checksum = (checksum >>> 8) ^ crcTable[(checksum ^ byte) & 255]!;
   return (checksum ^ 0xffffffff) >>> 0;
 }
 
@@ -79,8 +80,8 @@ function pngDimensions(bytes: Buffer): { width: number; height: number } {
   const height = bytes.readUInt32BE(20);
   if (!width || !height || width * height > 100_000_000)
     throw new Error("Screenshot dimensions exceed the supported image bounds.");
-  const bitDepth = bytes[24];
-  const colorType = bytes[25];
+  const bitDepth = bytes.readUInt8(24);
+  const colorType = bytes.readUInt8(25);
   const channels = new Map([
     [0, 1],
     [2, 3],
@@ -137,7 +138,7 @@ function pngDimensions(bytes: Buffer): { width: number; height: number } {
   if (pixels.length !== expectedLength)
     throw new Error("Screenshot PNG image data does not match its dimensions.");
   for (let row = 0; row < height; row++)
-    if (pixels[row * rowLength] > 4)
+    if (pixels.readUInt8(row * rowLength) > 4)
       throw new Error("Screenshot PNG contains an invalid row filter.");
   return { width, height };
 }

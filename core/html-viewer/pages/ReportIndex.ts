@@ -224,7 +224,7 @@ export function createReportIndex(
           element(
             "span",
             `priority ${issue.priority}`,
-            issue.priority[0].toUpperCase() + issue.priority.slice(1),
+            issue.priority.charAt(0).toUpperCase() + issue.priority.slice(1),
           ),
         );
         row.append(name, level);

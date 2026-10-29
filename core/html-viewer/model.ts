@@ -46,7 +46,7 @@ export function priorityDonutSegments(report: Report) {
   return priorityDistribution(report).map((segment) => ({
     ...segment,
     path: donutSegmentPath(segment.offset, segment.percentage),
-    label: `${segment.priority[0].toUpperCase()}${segment.priority.slice(1)} priority · ${segment.count} ${segment.count === 1 ? "issue" : "issues"}`,
+    label: `${segment.priority.charAt(0).toUpperCase()}${segment.priority.slice(1)} priority · ${segment.count} ${segment.count === 1 ? "issue" : "issues"}`,
   }));
 }
 function donutSegmentPath(offset: number, percentage: number): string {
@@ -172,7 +172,7 @@ export function findingMarkdown(report: Report, issue: Issue): string {
     "",
     `Finding ID: ${markdownText(issue.id)}`,
     "",
-    `Priority: ${issue.priority[0].toUpperCase()}${issue.priority.slice(1)}`,
+    `Priority: ${issue.priority.charAt(0).toUpperCase()}${issue.priority.slice(1)}`,
     `Priority explanation: ${markdownText(issue.priorityRationale)}`,
     `Category: ${categories.find((category) => category.id === issue.category)?.title}`,
     `Scope: ${markdownText(scopeLabel(report, issue.scope))}`,

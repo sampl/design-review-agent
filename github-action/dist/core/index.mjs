@@ -7211,7 +7211,274 @@ var require_dist = __commonJS({
   }
 });
 
-// core/run-review/runReview.ts
+// core/codex-runtime/codexRuntime.ts
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
+import { setTimeout as delay } from "node:timers/promises";
+
+// core/run-review/reviewError.ts
+var ReviewError = class extends Error {
+  code;
+  runIssues;
+  constructor(code, message, runIssues) {
+    super(message);
+    this.name = "ReviewError";
+    this.code = code;
+    this.runIssues = runIssues ?? [{ severity: "error", code, message }];
+  }
+};
+
+// core/codex-runtime/codexRuntime.ts
+var require2 = createRequire(import.meta.url);
+var runtimeRequirements = JSON.parse(
+  await readFile(
+    new URL("./runtimeRequirements.json", import.meta.url),
+    "utf8"
+  )
+);
+var browserTools = [
+  "browser_navigate",
+  "browser_snapshot",
+  "browser_evaluate",
+  "browser_take_screenshot",
+  "browser_resize",
+  "browser_click",
+  "browser_hover",
+  "browser_press_key",
+  "browser_wait_for",
+  "browser_tabs",
+  "browser_close",
+  "browser_console_messages"
+];
+function browserConfiguration(browserCli, evidenceDirectory) {
+  return {
+    command: process.execPath,
+    args: [
+      browserCli,
+      "--headless",
+      "--isolated",
+      "--browser",
+      "chromium",
+      "--image-responses",
+      "allow",
+      "--output-dir",
+      evidenceDirectory
+    ],
+    required: true,
+    startup_timeout_sec: 60,
+    tool_timeout_sec: 60,
+    default_tools_approval_mode: "approve",
+    enabled_tools: browserTools
+  };
+}
+function toml(value) {
+  if (typeof value !== "object" || Array.isArray(value))
+    return JSON.stringify(value);
+  return `{${Object.entries(value).map(([key, entry]) => `${key}=${toml(entry)}`).join(",")}}`;
+}
+async function runProcess(executable, args, signal, options = {}) {
+  if (signal.aborted)
+    throw new ReviewError("cancelled", "Design review was cancelled.");
+  if (process.platform === "win32")
+    throw new ReviewError(
+      "runtime-unavailable",
+      "Reviews currently require macOS or Linux."
+    );
+  return await new Promise((resolve2, reject) => {
+    const child = spawn(executable, args, {
+      cwd: options.cwd,
+      detached: true,
+      stdio: ["pipe", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let termination;
+    const killGroup = (killSignal) => {
+      if (!child.pid) return;
+      try {
+        process.kill(-child.pid, killSignal);
+      } catch (error) {
+        if (error.code !== "ESRCH")
+          child.kill(killSignal);
+      }
+    };
+    const groupExists = () => {
+      if (!child.pid) return false;
+      try {
+        process.kill(-child.pid, 0);
+        return true;
+      } catch (error) {
+        return error.code !== "ESRCH";
+      }
+    };
+    const terminateGroup = () => {
+      termination ??= (async () => {
+        killGroup("SIGTERM");
+        for (let attempt = 0; attempt < 30 && groupExists(); attempt++)
+          await delay(50);
+        killGroup("SIGKILL");
+      })();
+      return termination;
+    };
+    const abort = () => {
+      void terminateGroup();
+    };
+    signal.addEventListener("abort", abort, { once: true });
+    if (signal.aborted) abort();
+    child.stdout.on("data", (chunk) => {
+      stdout = (stdout + chunk.toString()).slice(-1e6);
+      if (options.installationOutput) process.stderr.write(chunk);
+    });
+    if (options.installationOutput)
+      child.stderr.on("data", (chunk) => process.stderr.write(chunk));
+    else child.stderr.resume();
+    child.stdin.on("error", () => {
+    });
+    child.stdin.end(options.input);
+    child.on(
+      "error",
+      () => reject(
+        new ReviewError(
+          "runtime-unavailable",
+          `Could not start ${executable === "codex" ? "Codex CLI" : "the runtime process"}. Check installation.`
+        )
+      )
+    );
+    child.on("exit", () => {
+      void terminateGroup();
+    });
+    child.on("close", async (code) => {
+      await terminateGroup();
+      signal.removeEventListener("abort", abort);
+      if (signal.aborted)
+        reject(new ReviewError("cancelled", "Design review was cancelled."));
+      else if (code !== 0)
+        reject(
+          new ReviewError(
+            "agent-failed",
+            `Runtime process exited unsuccessfully (${code ?? "signal"}). Check authentication and browser installation.`
+          )
+        );
+      else resolve2(stdout.trim());
+    });
+  });
+}
+async function browserPaths() {
+  try {
+    const mcpManifest = require2.resolve("@playwright/mcp/package.json");
+    const browserManifest = require2.resolve("playwright/package.json", {
+      paths: [dirname(mcpManifest)]
+    });
+    const mcp = JSON.parse(await readFile(mcpManifest, "utf8"));
+    const browser = JSON.parse(await readFile(browserManifest, "utf8"));
+    if (mcp.version !== runtimeRequirements.playwrightMcp || browser.version !== runtimeRequirements.playwright)
+      throw new ReviewError(
+        "runtime-version",
+        "Browser packages do not match core's pinned runtime. Reinstall package dependencies."
+      );
+    return {
+      browserCli: join(dirname(mcpManifest), "cli.js"),
+      installCli: join(dirname(browserManifest), "cli.js")
+    };
+  } catch (error) {
+    if (error instanceof ReviewError) throw error;
+    throw new ReviewError(
+      "runtime-unavailable",
+      "Install core dependencies before running a review."
+    );
+  }
+}
+async function executeCodex(prepared, signal, responsesProxyUrl, dependencies = {}) {
+  const executable = dependencies.executable ?? "codex";
+  const version = await runProcess(
+    executable,
+    ["--version"],
+    AbortSignal.any([signal, AbortSignal.timeout(1e4)])
+  );
+  const parsedVersion = version.match(/codex-cli ([\w.-]+)$/)?.[1];
+  if (parsedVersion !== runtimeRequirements.codex && !runtimeRequirements.compatibleCodexPrereleases.includes(
+    parsedVersion ?? ""
+  ))
+    throw new ReviewError(
+      "runtime-version",
+      `Codex CLI ${runtimeRequirements.codex} is required; install the matching version before reviewing.`
+    );
+  const browserCli = dependencies.browserCli ?? (await browserPaths()).browserCli;
+  const workingDirectory = await mkdtemp(join(tmpdir(), "design-qa-codex-"));
+  const responseFile = join(workingDirectory, "response.json");
+  try {
+    const authenticationArgs = [];
+    if (responsesProxyUrl !== void 0) {
+      let proxy;
+      try {
+        proxy = new URL(responsesProxyUrl);
+      } catch {
+        throw new ReviewError(
+          "invalid-request",
+          "The Responses proxy must use a trusted loopback HTTP /v1 endpoint."
+        );
+      }
+      if (proxy.protocol !== "http:" || proxy.hostname !== "127.0.0.1" || proxy.username || proxy.password || proxy.search || proxy.hash || proxy.pathname !== "/v1")
+        throw new ReviewError(
+          "invalid-request",
+          "The Responses proxy must use a trusted loopback HTTP /v1 endpoint."
+        );
+      authenticationArgs.push(
+        "-c",
+        'model_provider="design-review-proxy"',
+        "-c",
+        `model_providers.design-review-proxy=${toml({ name: "Design review Responses proxy", base_url: proxy.href, wire_api: "responses" })}`
+      );
+    }
+    await runProcess(
+      executable,
+      [
+        "exec",
+        "--ignore-user-config",
+        "--ignore-rules",
+        "--skip-git-repo-check",
+        "--sandbox",
+        "read-only",
+        "--cd",
+        workingDirectory,
+        "--output-last-message",
+        responseFile,
+        "-c",
+        `mcp_servers=${toml({ browser: browserConfiguration(browserCli, prepared.context.request.evidenceDirectory) })}`,
+        "-c",
+        "features.multi_agent=true",
+        "-c",
+        'approval_policy="never"',
+        ...authenticationArgs,
+        "-"
+      ],
+      signal,
+      {
+        cwd: workingDirectory,
+        input: `${prepared.prompt}
+
+## Source and browser runtime instructions
+Your working root is a temporary execution directory, not the app checkout. Inspect the absolute sourceDirectory in the supplied request. Read its applicable ancestor and source AGENTS.md instructions and product READMEs before static analysis. Do not load or execute source project Codex configuration, hooks, or policy files. With Playwright MCP browser_take_screenshot, omit filename to receive both image pixels and its saved path. Copy each referenced PNG into evidenceDirectory when needed; inspect actual returned images. Use browser_evaluate only for read-only measurements. Never mutate application data, submit forms, or fetch external data through evaluation.`
+      }
+    );
+    try {
+      if ((await stat(responseFile)).size > 1e7)
+        throw new Error("Response too large");
+      return JSON.parse(await readFile(responseFile, "utf8"));
+    } catch {
+      throw new ReviewError(
+        "invalid-response",
+        "Codex did not return a supported JSON response."
+      );
+    }
+  } finally {
+    await rm(workingDirectory, { recursive: true, force: true });
+  }
+}
+
+// core/run-review/reviewLifecycle.ts
 var import_ajv3 = __toESM(require_ajv(), 1);
 import { readFile as readFile3, mkdir as mkdir2, access as access2 } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -7644,15 +7911,15 @@ import {
   copyFile,
   link,
   mkdir,
-  mkdtemp,
-  readFile,
+  mkdtemp as mkdtemp2,
+  readFile as readFile2,
   realpath,
-  rm,
-  stat,
+  rm as rm2,
+  stat as stat2,
   writeFile
 } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname as dirname2, join as join2, relative, resolve, sep } from "node:path";
 import { inflateSync } from "node:zlib";
 var validCaptures = new import_ajv2.default({ strict: false }).compile({
   type: "array",
@@ -7691,8 +7958,8 @@ function pngDimensions(bytes) {
   const height = bytes.readUInt32BE(20);
   if (!width || !height || width * height > 1e8)
     throw new Error("Screenshot dimensions exceed the supported image bounds.");
-  const bitDepth = bytes[24];
-  const colorType = bytes[25];
+  const bitDepth = bytes.readUInt8(24);
+  const colorType = bytes.readUInt8(25);
   const channels = (/* @__PURE__ */ new Map([
     [0, 1],
     [2, 3],
@@ -7734,7 +8001,7 @@ function pngDimensions(bytes) {
   if (pixels.length !== expectedLength)
     throw new Error("Screenshot PNG image data does not match its dimensions.");
   for (let row = 0; row < height; row++)
-    if (pixels[row * rowLength] > 4)
+    if (pixels.readUInt8(row * rowLength) > 4)
       throw new Error("Screenshot PNG contains an invalid row filter.");
   return { width, height };
 }
@@ -7770,11 +8037,11 @@ async function packageReport({
       decodeURIComponent(capture.image)
     );
     const sourcePath = await realpath(originalPath);
-    if (!isContained(evidenceRoot, sourcePath) || !(await stat(sourcePath)).isFile())
+    if (!isContained(evidenceRoot, sourcePath) || !(await stat2(sourcePath)).isFile())
       throw new Error(
         "Screenshot evidence must stay inside its evidence directory."
       );
-    const bytes = await readFile(sourcePath);
+    const bytes = await readFile2(sourcePath);
     if (bytes.length > 25e6)
       throw new Error("Screenshot evidence exceeds the 25 MB file limit.");
     const dimensions = pngDimensions(bytes);
@@ -7791,9 +8058,9 @@ async function packageReport({
     capture.image = outputName;
   }
   const [template, script, stylesheet] = await Promise.all([
-    readFile(join(viewerDirectory, "index.html"), "utf8"),
-    readFile(join(viewerDirectory, "viewer.js"), "utf8"),
-    readFile(join(viewerDirectory, "viewer.css"), "utf8")
+    readFile2(join2(viewerDirectory, "index.html"), "utf8"),
+    readFile2(join2(viewerDirectory, "viewer.js"), "utf8"),
+    readFile2(join2(viewerDirectory, "viewer.css"), "utf8")
   ]);
   const html = template.replace(
     '<link rel="stylesheet" href="./viewer.css" />',
@@ -7808,9 +8075,9 @@ async function packageReport({
   if (!html.includes('id="design-qa-report"'))
     throw new Error("Viewer template is missing its supported asset markers.");
   const destination = resolve(outputDirectory);
-  await mkdir(dirname(destination), { recursive: true });
-  const staging = await mkdtemp(
-    join(dirname(destination), ".design-qa-report-")
+  await mkdir(dirname2(destination), { recursive: true });
+  const staging = await mkdtemp2(
+    join2(dirname2(destination), ".design-qa-report-")
   );
   const published = [];
   const files = [
@@ -7821,26 +8088,26 @@ async function packageReport({
     ...images.keys()
   ];
   try {
-    await mkdir(join(staging, "images"));
-    await writeFile(join(staging, "index.html"), html);
+    await mkdir(join2(staging, "images"));
+    await writeFile(join2(staging, "index.html"), html);
     await writeFile(
-      join(staging, "report.json"),
+      join2(staging, "report.json"),
       JSON.stringify(report, null, 2)
     );
     await writeFile(
-      join(staging, "run-evidence.json"),
+      join2(staging, "run-evidence.json"),
       JSON.stringify({ captures: packagedCaptures }, null, 2)
     );
     await copyFile(
-      join(viewerDirectory, "report.schema.json"),
-      join(staging, "report.schema.json")
+      join2(viewerDirectory, "report.schema.json"),
+      join2(staging, "report.schema.json")
     );
     for (const [filename, bytes] of images)
-      await writeFile(join(staging, filename), bytes);
+      await writeFile(join2(staging, filename), bytes);
     await mkdir(destination, { recursive: true });
     const destinationRoot = await realpath(destination);
-    await mkdir(join(destination, "images"), { recursive: true });
-    if (!isContained(destinationRoot, await realpath(join(destination, "images"))))
+    await mkdir(join2(destination, "images"), { recursive: true });
+    if (!isContained(destinationRoot, await realpath(join2(destination, "images"))))
       throw new Error(
         "Report images destination must not escape the report folder."
       );
@@ -7848,343 +8115,15 @@ async function packageReport({
       ...files.filter((name) => name !== "index.html"),
       "index.html"
     ]) {
-      await link(join(staging, filename), join(destination, filename));
+      await link(join2(staging, filename), join2(destination, filename));
       published.push(filename);
     }
     return { report, outputDirectory: destination, captures: packagedCaptures };
   } catch (error) {
-    for (const filename of published) await rm(join(destination, filename));
+    for (const filename of published) await rm2(join2(destination, filename));
     throw error;
   } finally {
-    await rm(staging, { recursive: true, force: true });
-  }
-}
-
-// core/codex-runtime/codexRuntime.ts
-import { spawn } from "node:child_process";
-import { createRequire } from "node:module";
-import { mkdtemp as mkdtemp2, readFile as readFile2, rm as rm2, stat as stat2 } from "node:fs/promises";
-import { dirname as dirname2, join as join2 } from "node:path";
-import { tmpdir } from "node:os";
-import { setTimeout as delay } from "node:timers/promises";
-
-// core/run-review/reviewError.ts
-var ReviewError = class extends Error {
-  code;
-  runIssues;
-  constructor(code, message, runIssues) {
-    super(message);
-    this.name = "ReviewError";
-    this.code = code;
-    this.runIssues = runIssues ?? [{ severity: "error", code, message }];
-  }
-};
-
-// core/codex-runtime/codexRuntime.ts
-var require2 = createRequire(import.meta.url);
-var runtimeRequirements = JSON.parse(
-  await readFile2(
-    new URL("./runtimeRequirements.json", import.meta.url),
-    "utf8"
-  )
-);
-var browserTools = [
-  "browser_navigate",
-  "browser_snapshot",
-  "browser_evaluate",
-  "browser_take_screenshot",
-  "browser_resize",
-  "browser_click",
-  "browser_hover",
-  "browser_press_key",
-  "browser_wait_for",
-  "browser_tabs",
-  "browser_close",
-  "browser_console_messages"
-];
-function browserConfiguration(browserCli, evidenceDirectory) {
-  return {
-    command: process.execPath,
-    args: [
-      browserCli,
-      "--headless",
-      "--isolated",
-      "--browser",
-      "chromium",
-      "--image-responses",
-      "allow",
-      "--output-dir",
-      evidenceDirectory
-    ],
-    required: true,
-    startup_timeout_sec: 60,
-    tool_timeout_sec: 60,
-    default_tools_approval_mode: "approve",
-    enabled_tools: browserTools
-  };
-}
-function toml(value) {
-  if (typeof value !== "object" || Array.isArray(value))
-    return JSON.stringify(value);
-  return `{${Object.entries(value).map(([key, entry]) => `${key}=${toml(entry)}`).join(",")}}`;
-}
-async function runProcess(executable, args, signal, options = {}) {
-  if (signal.aborted)
-    throw new ReviewError("cancelled", "Design review was cancelled.");
-  if (process.platform === "win32")
-    throw new ReviewError(
-      "runtime-unavailable",
-      "Reviews currently require macOS or Linux."
-    );
-  return await new Promise((resolve2, reject) => {
-    const child = spawn(executable, args, {
-      cwd: options.cwd,
-      detached: true,
-      stdio: ["pipe", "pipe", "pipe"]
-    });
-    let stdout = "";
-    let termination;
-    const killGroup = (killSignal) => {
-      if (!child.pid) return;
-      try {
-        process.kill(-child.pid, killSignal);
-      } catch (error) {
-        if (error.code !== "ESRCH")
-          child.kill(killSignal);
-      }
-    };
-    const groupExists = () => {
-      if (!child.pid) return false;
-      try {
-        process.kill(-child.pid, 0);
-        return true;
-      } catch (error) {
-        return error.code !== "ESRCH";
-      }
-    };
-    const terminateGroup = () => {
-      termination ??= (async () => {
-        killGroup("SIGTERM");
-        for (let attempt = 0; attempt < 30 && groupExists(); attempt++)
-          await delay(50);
-        killGroup("SIGKILL");
-      })();
-      return termination;
-    };
-    const abort = () => {
-      void terminateGroup();
-    };
-    signal.addEventListener("abort", abort, { once: true });
-    if (signal.aborted) abort();
-    child.stdout.on("data", (chunk) => {
-      stdout = (stdout + chunk.toString()).slice(-1e6);
-      if (options.installationOutput) process.stderr.write(chunk);
-    });
-    if (options.installationOutput)
-      child.stderr.on("data", (chunk) => process.stderr.write(chunk));
-    else child.stderr.resume();
-    child.stdin.on("error", () => {
-    });
-    child.stdin.end(options.input);
-    child.on(
-      "error",
-      () => reject(
-        new ReviewError(
-          "runtime-unavailable",
-          `Could not start ${executable === "codex" ? "Codex CLI" : "the runtime process"}. Check installation.`
-        )
-      )
-    );
-    child.on("exit", () => {
-      void terminateGroup();
-    });
-    child.on("close", async (code) => {
-      await terminateGroup();
-      signal.removeEventListener("abort", abort);
-      if (signal.aborted)
-        reject(new ReviewError("cancelled", "Design review was cancelled."));
-      else if (code !== 0)
-        reject(
-          new ReviewError(
-            "agent-failed",
-            `Runtime process exited unsuccessfully (${code ?? "signal"}). Check authentication and browser installation.`
-          )
-        );
-      else resolve2(stdout.trim());
-    });
-  });
-}
-async function browserPaths() {
-  try {
-    const mcpManifest = require2.resolve("@playwright/mcp/package.json");
-    const browserManifest = require2.resolve("playwright/package.json", {
-      paths: [dirname2(mcpManifest)]
-    });
-    const mcp = JSON.parse(await readFile2(mcpManifest, "utf8"));
-    const browser = JSON.parse(await readFile2(browserManifest, "utf8"));
-    if (mcp.version !== runtimeRequirements.playwrightMcp || browser.version !== runtimeRequirements.playwright)
-      throw new ReviewError(
-        "runtime-version",
-        "Browser packages do not match core's pinned runtime. Reinstall package dependencies."
-      );
-    return {
-      browserCli: join2(dirname2(mcpManifest), "cli.js"),
-      installCli: join2(dirname2(browserManifest), "cli.js")
-    };
-  } catch (error) {
-    if (error instanceof ReviewError) throw error;
-    throw new ReviewError(
-      "runtime-unavailable",
-      "Install core dependencies before running a review."
-    );
-  }
-}
-async function executeCodex(prepared, signal, responsesProxyUrl, dependencies = {}) {
-  const executable = dependencies.executable ?? "codex";
-  const version = await runProcess(
-    executable,
-    ["--version"],
-    AbortSignal.any([signal, AbortSignal.timeout(1e4)])
-  );
-  const parsedVersion = version.match(/codex-cli ([\w.-]+)$/)?.[1];
-  if (parsedVersion !== runtimeRequirements.codex && !runtimeRequirements.compatibleCodexPrereleases.includes(
-    parsedVersion ?? ""
-  ))
-    throw new ReviewError(
-      "runtime-version",
-      `Codex CLI ${runtimeRequirements.codex} is required; install the matching version before reviewing.`
-    );
-  const browserCli = dependencies.browserCli ?? (await browserPaths()).browserCli;
-  const workingDirectory = await mkdtemp2(join2(tmpdir(), "design-qa-codex-"));
-  const responseFile = join2(workingDirectory, "response.json");
-  try {
-    const authenticationArgs = [];
-    if (responsesProxyUrl !== void 0) {
-      let proxy;
-      try {
-        proxy = new URL(responsesProxyUrl);
-      } catch {
-        throw new ReviewError(
-          "invalid-request",
-          "The Responses proxy must use a trusted loopback HTTP /v1 endpoint."
-        );
-      }
-      if (proxy.protocol !== "http:" || proxy.hostname !== "127.0.0.1" || proxy.username || proxy.password || proxy.search || proxy.hash || proxy.pathname !== "/v1")
-        throw new ReviewError(
-          "invalid-request",
-          "The Responses proxy must use a trusted loopback HTTP /v1 endpoint."
-        );
-      authenticationArgs.push(
-        "-c",
-        'model_provider="design-review-proxy"',
-        "-c",
-        `model_providers.design-review-proxy=${toml({ name: "Design review Responses proxy", base_url: proxy.href, wire_api: "responses" })}`
-      );
-    }
-    await runProcess(
-      executable,
-      [
-        "exec",
-        "--ignore-user-config",
-        "--ignore-rules",
-        "--skip-git-repo-check",
-        "--sandbox",
-        "read-only",
-        "--cd",
-        workingDirectory,
-        "--output-last-message",
-        responseFile,
-        "-c",
-        `mcp_servers=${toml({ browser: browserConfiguration(browserCli, prepared.context.request.evidenceDirectory) })}`,
-        "-c",
-        "features.multi_agent=true",
-        "-c",
-        'approval_policy="never"',
-        ...authenticationArgs,
-        "-"
-      ],
-      signal,
-      {
-        cwd: workingDirectory,
-        input: `${prepared.prompt}
-
-## Source and browser runtime instructions
-Your working root is a temporary execution directory, not the app checkout. Inspect the absolute sourceDirectory in the supplied request. Read its applicable ancestor and source AGENTS.md instructions and product READMEs before static analysis. Do not load or execute source project Codex configuration, hooks, or policy files. With Playwright MCP browser_take_screenshot, omit filename to receive both image pixels and its saved path. Copy each referenced PNG into evidenceDirectory when needed; inspect actual returned images. Use browser_evaluate only for read-only measurements. Never mutate application data, submit forms, or fetch external data through evaluation.`
-      }
-    );
-    try {
-      if ((await stat2(responseFile)).size > 1e7)
-        throw new Error("Response too large");
-      return JSON.parse(await readFile2(responseFile, "utf8"));
-    } catch {
-      throw new ReviewError(
-        "invalid-response",
-        "Codex did not return a supported JSON response."
-      );
-    }
-  } finally {
-    await rm2(workingDirectory, { recursive: true, force: true });
-  }
-}
-
-// core/run-review/reviewExecution.ts
-async function executeReview(request, outputDirectory, options, executeAgent) {
-  if (options.signal?.aborted)
-    throw new ReviewError("cancelled", "Design review was cancelled.");
-  let prepared;
-  try {
-    prepared = await prepareReview(request);
-  } catch {
-    throw new ReviewError(
-      "invalid-request",
-      "Review inputs or shared guidance could not be prepared."
-    );
-  }
-  const controller = new AbortController();
-  const cancel = () => controller.abort(
-    new ReviewError("cancelled", "Design review was cancelled.")
-  );
-  options.signal?.addEventListener("abort", cancel, { once: true });
-  if (options.signal?.aborted) cancel();
-  const timer = setTimeout(
-    () => controller.abort(
-      new ReviewError(
-        "timeout",
-        "Design review exceeded its agent execution budget."
-      )
-    ),
-    request.reviewTimeoutMs ?? runtimeRequirements.reviewTimeoutMs
-  );
-  try {
-    const response = await executeAgent(prepared, controller.signal);
-    clearTimeout(timer);
-    if (controller.signal.aborted) throw controller.signal.reason;
-    options.signal?.removeEventListener("abort", cancel);
-    try {
-      return await finalizeReview(
-        prepared.context,
-        response,
-        outputDirectory,
-        options
-      );
-    } catch (error) {
-      if (error instanceof ReviewError) throw error;
-      throw new ReviewError(
-        "finalization-failed",
-        "Review response or evidence could not be validated and packaged."
-      );
-    }
-  } catch (error) {
-    if (controller.signal.aborted) throw controller.signal.reason;
-    if (error instanceof ReviewError) throw error;
-    throw new ReviewError(
-      "agent-failed",
-      "The review agent failed before completing its response."
-    );
-  } finally {
-    clearTimeout(timer);
-    options.signal?.removeEventListener("abort", cancel);
-    controller.abort();
+    await rm2(staging, { recursive: true, force: true });
   }
 }
 
@@ -8201,7 +8140,7 @@ async function resolveAssetRoot(moduleUrl = import.meta.url) {
   throw new Error("Shared review assets could not be located.");
 }
 
-// core/run-review/runReview.ts
+// core/run-review/reviewLifecycle.ts
 var reviewDefaults = Object.freeze({
   scope: Object.freeze(["/"]),
   viewports: Object.freeze(
@@ -8474,6 +8413,67 @@ async function finalizeReview(context, response, outputDirectory, options = {}) 
     status: runIssues.length ? "incomplete" : "complete"
   };
 }
+async function executeReview(request, outputDirectory, options, executeAgent) {
+  if (options.signal?.aborted)
+    throw new ReviewError("cancelled", "Design review was cancelled.");
+  let prepared;
+  try {
+    prepared = await prepareReview(request);
+  } catch {
+    throw new ReviewError(
+      "invalid-request",
+      "Review inputs or shared guidance could not be prepared."
+    );
+  }
+  const controller = new AbortController();
+  const cancel = () => controller.abort(
+    new ReviewError("cancelled", "Design review was cancelled.")
+  );
+  options.signal?.addEventListener("abort", cancel, { once: true });
+  if (options.signal?.aborted) cancel();
+  const timer = setTimeout(
+    () => controller.abort(
+      new ReviewError(
+        "timeout",
+        "Design review exceeded its agent execution budget."
+      )
+    ),
+    request.reviewTimeoutMs ?? runtimeRequirements.reviewTimeoutMs
+  );
+  try {
+    const response = await executeAgent(prepared, controller.signal);
+    clearTimeout(timer);
+    if (controller.signal.aborted) throw controller.signal.reason;
+    options.signal?.removeEventListener("abort", cancel);
+    try {
+      return await finalizeReview(
+        prepared.context,
+        response,
+        outputDirectory,
+        options
+      );
+    } catch (error) {
+      if (error instanceof ReviewError) throw error;
+      throw new ReviewError(
+        "finalization-failed",
+        "Review response or evidence could not be validated and packaged."
+      );
+    }
+  } catch (error) {
+    if (controller.signal.aborted) throw controller.signal.reason;
+    if (error instanceof ReviewError) throw error;
+    throw new ReviewError(
+      "agent-failed",
+      "The review agent failed before completing its response."
+    );
+  } finally {
+    clearTimeout(timer);
+    options.signal?.removeEventListener("abort", cancel);
+    controller.abort();
+  }
+}
+
+// core/run-review/runReview.ts
 async function runReview(request, outputDirectory, options = {}) {
   return await executeReview(
     request,

@@ -74,7 +74,7 @@ export async function dropSudo(options: DropSudoOptions): Promise<void> {
   await execCommand("sudo", ["-K"], { ignoreFailure: true });
 
   const execArgs = [...process.execArgv];
-  const scriptPath = process.argv[1];
+  const scriptPath = process.argv[1]!;
   // Re-enter this command under sudo so the privilege-dropping work happens in a
   // single place regardless of the host platform.
   await execCommand("sudo", [
@@ -283,7 +283,7 @@ async function getLinuxGroups(user: string): Promise<Array<LinuxGroup>> {
 
   return ids.map((id, index) => ({
     id,
-    name: names[index],
+    name: names[index]!,
     primary: id === primaryId,
   }));
 }

@@ -54,7 +54,7 @@ export function completeReport(): Report {
       title: `Review ${category} in account settings`,
       problem: "The account menu obscures the next action for keyboard users.",
       suggestedSolution: "Keep the active action visible when the menu opens.",
-      priority: (["high", "medium", "low"] as const)[index % 3],
+      priority: fixtureValue((["high", "medium", "low"] as const)[index % 3]),
       priorityRationale:
         "The repeated account task affects every keyboard user; observed directly.",
       benefit: "Users can identify and complete the next action.",
@@ -123,4 +123,11 @@ export function warningsOnlyReport(): Report {
   const report = completeReport();
   report.issues = [];
   return report;
+}
+
+// Fixture consumers must establish that an indexed value exists before using it.
+export function fixtureValue<T>(value: T | undefined): T {
+  if (value === undefined)
+    throw new Error("Expected a value in the synthetic fixture.");
+  return value;
 }

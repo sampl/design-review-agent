@@ -4,12 +4,11 @@ import { parseArgs } from "node:util";
 import {
   prepareReview,
   finalizeReview,
-  packageReport,
   defaultViewerDirectory,
-  runReview,
-  ReviewError,
   type ReviewContext,
-} from "./run-review/runReview.ts";
+} from "./run-review/reviewLifecycle.ts";
+import { runReview, ReviewError } from "./run-review/runReview.ts";
+import { packageReport } from "./report-format/packageReport.ts";
 import { installBrowser } from "./codex-runtime/codexRuntime.ts";
 
 const controller = new AbortController();
@@ -53,9 +52,13 @@ try {
       )) as import("./run-review/runReview.ts").ReviewRequest,
       required("output"),
       {
-        viewerDirectory: values.viewer,
+        ...(values.viewer !== undefined
+          ? { viewerDirectory: values.viewer }
+          : {}),
         signal: controller.signal,
-        responsesProxyUrl: values["responses-proxy-url"],
+        ...(values["responses-proxy-url"] !== undefined
+          ? { responsesProxyUrl: values["responses-proxy-url"] }
+          : {}),
       },
     );
     console.info(JSON.stringify(result));
@@ -75,7 +78,7 @@ try {
       (await json(required("context"))) as ReviewContext,
       await json(required("response")),
       required("output"),
-      { viewerDirectory: values.viewer },
+      values.viewer !== undefined ? { viewerDirectory: values.viewer } : {},
     );
     console.info(
       JSON.stringify({

@@ -5,7 +5,7 @@ import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
-import type { PreparedReview } from "../run-review/runReview.ts";
+import type { PreparedReview } from "../run-review/reviewLifecycle.ts";
 import { ReviewError } from "../run-review/reviewError.ts";
 
 const require = createRequire(import.meta.url);

@@ -6,6 +6,7 @@ Run a review from start to finish: prepare shared inputs, run the agent, check i
 
 ## Architecture
 
+- The production entry point selects Codex; one internal lifecycle module owns preparation, execution, and finalization. Runtime and error modules import lifecycle contracts only as types, so implementation dependencies stay one-way.
 - Local reviews and GitHub reviews follow the same preparation, execution, validation, and completion steps. Tests can replace the agent execution step internally; callers cannot choose a different executor through the public API.
 - Prepare the request, prompt, and expected response format before execution. Before packaging, check the response structure, its app and repository details, requested routes and screen sizes, and real screenshot evidence.
 - Find shared files beside the built Action entry points, or in the package directory when running from source. Prefer the Action's own files over any parent checkout. Keep the supported report-guidance directory names for both layouts.
@@ -15,8 +16,8 @@ Run a review from start to finish: prepare shared inputs, run the agent, check i
 
 ## Important files
 
-- `runReview.ts` — Request/response contracts, preparation, coverage validation, finalization, and the complete review entry.
-- `reviewExecution.ts` — Shared execution budget, cancellation, error handling, and finalization boundary.
+- `runReview.ts` — Thin production entry point that selects Codex and exposes the public review contract.
+- `reviewLifecycle.ts` — Internal request/response contracts, preparation, execution budget, cancellation, validation, and finalization.
 - `reviewError.ts` — Named error types shared with the apps that call core.
 - `assetRoot.ts` — Find shared files in the source package and built Action bundle.
 

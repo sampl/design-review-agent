@@ -1,5 +1,10 @@
 // Extends contract fixtures with realistic synthetic reports for development previews.
-import { completeReport, emptyReport, warningsOnlyReport } from "./contract.ts";
+import {
+  fixtureValue,
+  completeReport,
+  emptyReport,
+  warningsOnlyReport,
+} from "./contract.ts";
 import type { Report } from "../index.ts";
 export const scenarios = [
   {
@@ -158,8 +163,8 @@ export function previewReport(id: ScenarioId): unknown {
     "Section labels and field descriptions share the same weight and size, making it harder to find the right setting.",
   ];
   report.issues.forEach((issue, index) => {
-    issue.title = titles[index];
-    issue.problem = problems[index % problems.length];
+    issue.title = fixtureValue(titles[index]);
+    issue.problem = fixtureValue(problems[index % problems.length]);
     issue.suggestedSolution =
       index === 0
         ? "Anchor the menu above its trigger and keep the save action visible. Preserve the existing account options and keyboard behavior."
@@ -169,7 +174,7 @@ export function previewReport(id: ScenarioId): unknown {
         ? "Saving settings is a frequent task. The obscured control affects keyboard users directly and was observed in the inspected state."
         : "This repeated pattern adds friction during account setup. The impact is visible in the reviewed settings flow.";
   });
-  const evidence = report.issues[0].evidence;
+  const evidence = fixtureValue(report.issues[0]).evidence;
   if (evidence.kind === "screenshot") {
     evidence.before.image = "images/settings-before.svg";
     evidence.before.imageDimensions = { width: 960, height: 680 };
@@ -278,7 +283,7 @@ export function previewReport(id: ScenarioId): unknown {
         locationName: "Account menu options",
       },
     ] as const;
-    const template = report.issues[1];
+    const template = fixtureValue(report.issues[1]);
     report.issues = report.issues.filter(
       (issue) => issue.category !== "consistency-and-polish",
     );
@@ -311,18 +316,18 @@ export function previewReport(id: ScenarioId): unknown {
     report.issues = report.issues.slice(0, 2);
   }
   if (id === "long") {
-    report.issues[0].title =
+    fixtureValue(report.issues[0]).title =
       "The account menu obscures a critical save action across long workspace names and repeated account settings sections";
-    report.issues[0].problem = Array.from(
+    fixtureValue(report.issues[0]).problem = Array.from(
       { length: 8 },
-      () => report.issues[0].problem,
+      () => fixtureValue(report.issues[0]).problem,
     ).join(" ");
-    report.issues[0].acceptanceCriteria = Array.from(
+    fixtureValue(report.issues[0]).acceptanceCriteria = Array.from(
       { length: 12 },
       (_, index) =>
         `Scenario ${index + 1}: the save action remains visible and reachable with the keyboard, including a workspace named ${"An exceptionally long workspace name ".repeat(3)}.`,
     );
-    report.issues[0].benefit +=
+    fixtureValue(report.issues[0]).benefit +=
       ' Authored text stays literal: <script>alert("demo")</script> and <img src=x onerror=alert(1)>.';
   }
   if (id === "broken-image" && evidence.kind === "screenshot")
@@ -334,7 +339,7 @@ export function previewReport(id: ScenarioId): unknown {
       review: { ...report.review, title: "" },
       issues: [
         {
-          ...report.issues[0],
+          ...fixtureValue(report.issues[0]),
           scope: { kind: "areas", areaIds: ["unknown-area"] },
         },
       ],

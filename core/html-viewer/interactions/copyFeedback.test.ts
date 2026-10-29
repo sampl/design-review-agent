@@ -1,4 +1,5 @@
 // Verifies visible feedback timing and cancellation without a browser clipboard.
+import { fixtureValue } from "../../report-format/fixtures/contract.ts";
 import { afterEach, it, vi } from "vitest";
 import assert from "node:assert/strict";
 import { createCopyFeedback } from "./copyFeedback.ts";
@@ -42,10 +43,10 @@ it("ignores stale clipboard results and cancels feedback when details change", a
   });
   const first = feedback.copy("first");
   const second = feedback.copy("second");
-  pending[0]();
+  fixtureValue(pending[0])();
   await first;
   assert.deepEqual(events, ["reset", "reset"]);
-  pending[1]();
+  fixtureValue(pending[1])();
   await second;
   assert.equal(events.at(-1), "copied");
   feedback.dispose();

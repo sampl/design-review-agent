@@ -14,6 +14,13 @@ export function showImageModal(
   initialIndex: number,
   dismissImageTooltips: () => void,
 ): void {
+  if (!images.length) return;
+  if (
+    !Number.isInteger(initialIndex) ||
+    initialIndex < 0 ||
+    initialIndex >= images.length
+  )
+    throw new Error("Invalid screenshot gallery index.");
   dismissImageTooltips();
   let imageIndex = initialIndex;
   const body = element("img", "enlarged");
@@ -57,6 +64,7 @@ export function showImageModal(
   const imageControls = new Map<-1 | 1, HTMLButtonElement>();
   function showImage(): void {
     const image = images[imageIndex];
+    if (!image) throw new Error("Missing screenshot gallery image.");
     body.src = image.capture.image;
     body.alt = `${image.label}: ${image.capture.state}`;
     const label = `${image.label} screenshot${images.length > 1 ? `, image ${imageIndex + 1} of ${images.length}` : ""}`;

@@ -103,7 +103,7 @@ export function createPrioritySummary(report: Report): {
       element(
         "span",
         "",
-        `${segment.priority[0].toUpperCase()}${segment.priority.slice(1)} priority`,
+        `${segment.priority.charAt(0).toUpperCase()}${segment.priority.slice(1)} priority`,
       ),
       element("span", "priority-count", String(segment.count)),
     );

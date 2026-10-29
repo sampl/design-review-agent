@@ -9,7 +9,7 @@ export function priorityBadge(
   const badge = element(
     "p",
     `priority priority-explanation ${issue.priority}`,
-    `${issue.priority[0].toUpperCase()}${issue.priority.slice(1)} priority`,
+    `${issue.priority.charAt(0).toUpperCase()}${issue.priority.slice(1)} priority`,
   );
   badge.tabIndex = 0;
   const tooltip = element(

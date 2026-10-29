@@ -17,7 +17,7 @@ Define the versioned report format shared by the local skill, future cloud servi
 - [reportSchema.ts](reportSchema.ts) — Report format and TypeScript types derived from it
 - [validateReport.ts](validateReport.ts) — Function to validate a report
 - [packageReport.ts](packageReport.ts) — Filesystem asset validation and portable report generation.
-- [fixtures/contract.ts](fixtures/contract.ts) — Fake reports for contract tests.
+- [fixtures/contract.ts](fixtures/contract.ts) — Fake reports and checked fixture-value access for contract tests and previews.
 - [fixtures/scenarios.ts](fixtures/scenarios.ts) — Richer fake reports and edge cases for development previews.
 - [fixtures/screenshots.ts](fixtures/screenshots.ts) — Synthetic screenshot illustrations for development.
 

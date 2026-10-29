@@ -1,3 +1,12 @@
+// Tests Action mapping and the committed runtime without model or privileged calls.
+import { ChildProcess, spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import type { ReviewResult, RunIssue } from "../core/index.ts";
+import {
+  fixtureValue,
+  emptyReport,
+} from "../core/report-format/fixtures/contract.ts";
+import { loadBundledCore } from "./bundledCore.ts";
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
@@ -16,7 +25,7 @@ import {
   resolveSourceDirectory,
   runDesignReviewAction,
   runtimeRequirements,
-} from "./githubActionAdapter.mjs";
+} from "./githubActionAdapter.ts";
 import { LINUX_DROP_SUDO_SCRIPT } from "./isolate.ts";
 
 const inputs = {
@@ -50,6 +59,11 @@ test("validates explicit route, viewport, URL, and timeout inputs", () => {
     { paths: '["https://other.test"]' },
     { paths: '["//other.test"]' },
     { paths: "[]" },
+    { paths: "[null]" },
+    { paths: "{}" },
+    { viewports: "null" },
+    { viewports: "[null]" },
+    { viewports: '[{"width":"390","height":844}]' },
     { viewports: '[{"width":1,"height":844}]' },
     { viewports: '[{"width":390,"height":844,"extra":true}]' },
     { timeoutMinutes: "0" },
@@ -83,9 +97,9 @@ test("rejects traversal, environment scopes, and escaped symlinks", async () => 
 });
 
 test("maps GitHub inputs to the normal core entry point and preserves core outcomes", async () => {
-  for (const status of ["complete", "incomplete"]) {
+  for (const status of ["complete", "incomplete"] as const) {
     const paths = await fixture();
-    const runIssues =
+    const runIssues: RunIssue[] =
       status === "incomplete"
         ? [
             {
@@ -99,7 +113,7 @@ test("maps GitHub inputs to the normal core entry point and preserves core outco
       ...paths,
       ...inputs,
       sourceScope: "src",
-      review: async (request, outputDirectory, options) => {
+      review: async (request, outputDirectory, options = {}) => {
         assert.equal(
           request.sourceDirectory,
           path.join(paths.repositoryDirectory, "src"),
@@ -110,7 +124,7 @@ test("maps GitHub inputs to the normal core entry point and preserves core outco
         assert.equal(options.responsesProxyUrl, "http://127.0.0.1:12345/v1");
         assert.ok(path.isAbsolute(request.evidenceDirectory));
         assert.notEqual(request.evidenceDirectory, outputDirectory);
-        return { status, runIssues, outputDirectory, report: { issues: [] } };
+        return { status, runIssues, outputDirectory, report: emptyReport() };
       },
     });
     assert.equal(result.status, status);
@@ -132,7 +146,7 @@ test("maps GitHub inputs to the normal core entry point and preserves core outco
 
 test("typed core failures produce diagnostic artifacts and remain failures", async () => {
   const paths = await fixture();
-  const runIssues = [
+  const runIssues: RunIssue[] = [
     {
       severity: "error",
       code: "agent-timeout",
@@ -154,9 +168,9 @@ test("typed core failures produce diagnostic artifacts and remain failures", asy
     (error) => error === failure,
   );
   const outputs = await readFile(paths.outputsFile, "utf8");
-  const artifactDirectory = outputs.match(
-    /design-qa-artifact-directory-path=(.+)/,
-  )[1];
+  const artifactMatch = outputs.match(/design-qa-artifact-directory-path=(.+)/);
+  assert.ok(artifactMatch);
+  const artifactDirectory = fixtureValue(artifactMatch[1]);
   assert.deepEqual(
     JSON.parse(
       await readFile(path.join(artifactDirectory, "run-status.json"), "utf8"),
@@ -182,20 +196,49 @@ test("unexpected failures do not copy raw errors or model output into diagnostic
     }),
   );
   const outputs = await readFile(paths.outputsFile, "utf8");
-  const artifactDirectory = outputs.match(
-    /design-qa-artifact-directory-path=(.+)/,
-  )[1];
+  const artifactMatch = outputs.match(/design-qa-artifact-directory-path=(.+)/);
+  assert.ok(artifactMatch);
+  const artifactDirectory = fixtureValue(artifactMatch[1]);
   assert.doesNotMatch(
     await readFile(path.join(artifactDirectory, "run-status.json"), "utf8"),
     /private text/,
   );
 });
 
+test("malformed failure details use the generic diagnostic without leaking raw values", async () => {
+  const paths = await fixture();
+  const failure = Object.assign(new Error("private raw failure"), {
+    runIssues: [
+      { severity: "unexpected", code: "private", message: "private text" },
+    ],
+  });
+  await assert.rejects(
+    runDesignReviewAction({
+      ...paths,
+      ...inputs,
+      review: async () => {
+        throw failure;
+      },
+    }),
+    (error) => error === failure,
+  );
+  const outputs = await readFile(paths.outputsFile, "utf8");
+  const artifactMatch = outputs.match(/design-qa-artifact-directory-path=(.+)/);
+  assert.ok(artifactMatch);
+  const diagnostic = await readFile(
+    path.join(fixtureValue(artifactMatch[1]), "run-status.json"),
+    "utf8",
+  );
+  assert.match(diagnostic, /review-execution-failed/);
+  assert.doesNotMatch(diagnostic, /private/);
+});
+
 test("rejects stale report destinations and invalid proxy metadata before launching core", async () => {
   const paths = await fixture();
   let invoked = false;
-  const review = async () => {
+  const review = async (): Promise<ReviewResult> => {
     invoked = true;
+    throw new Error("Core must not be invoked for invalid setup.");
   };
   await assert.rejects(
     runDesignReviewAction({
@@ -206,11 +249,19 @@ test("rejects stale report destinations and invalid proxy metadata before launch
     }),
     /already exists/,
   );
-  await writeFile(paths.proxyInformationFile, JSON.stringify({ port: "bad" }));
-  await assert.rejects(
-    runDesignReviewAction({ ...paths, ...inputs, review }),
-    /proxy port/,
-  );
+  for (const metadata of [
+    null,
+    {},
+    { port: "bad" },
+    { port: 0 },
+    { port: 65536 },
+  ]) {
+    await writeFile(paths.proxyInformationFile, JSON.stringify(metadata));
+    await assert.rejects(
+      runDesignReviewAction({ ...paths, ...inputs, review }),
+      /proxy port/,
+    );
+  }
   assert.equal(invoked, false);
 });
 
@@ -249,7 +300,12 @@ test("uses upstream setup only and the exact pinned Linux privilege boundary", a
   );
   const normalized = dropSudo
     .replace("  type LinuxRunnerCredentials,", "  LinuxRunnerCredentials,")
-    .replace('"./linuxCredentials.ts"', '"./linuxCredentials"');
+    .replace('"./linuxCredentials.ts"', '"./linuxCredentials"')
+    .replace(
+      "const scriptPath = process.argv[1]!;",
+      "const scriptPath = process.argv[1];",
+    )
+    .replace("name: names[index]!,", "name: names[index],");
   assert.equal(
     createHash("sha256").update(normalized).digest("hex"),
     "739e6b11444f71b8594e604d2712c07dc5d8cdf6a70767c8d078831bbe498bd4",
@@ -258,15 +314,15 @@ test("uses upstream setup only and the exact pinned Linux privilege boundary", a
 
 test("normal bundled core rejects invalid review requests without launching a model", async () => {
   const paths = await fixture();
-  const { ReviewError } = await import("./dist/core/index.mjs");
+  const { ReviewError } = await loadBundledCore();
   await assert.rejects(
     runDesignReviewAction({ ...paths, ...inputs, paths: '["/","/"]' }),
     (error) => error instanceof ReviewError && error.code === "invalid-request",
   );
   const outputs = await readFile(paths.outputsFile, "utf8");
-  const artifactDirectory = outputs.match(
-    /design-qa-artifact-directory-path=(.+)/,
-  )[1];
+  const artifactMatch = outputs.match(/design-qa-artifact-directory-path=(.+)/);
+  assert.ok(artifactMatch);
+  const artifactDirectory = fixtureValue(artifactMatch[1]);
   const diagnostic = JSON.parse(
     await readFile(path.join(artifactDirectory, "run-status.json"), "utf8"),
   );
@@ -277,16 +333,17 @@ test("normal bundled core rejects invalid review requests without launching a mo
 test("cancellation reaches core and remains a failed diagnostic outcome", async () => {
   const paths = await fixture();
   const controller = new AbortController();
-  const runIssues = [
+  const runIssues: RunIssue[] = [
     { severity: "error", code: "cancelled", message: "Review cancelled" },
   ];
   const pending = runDesignReviewAction({
     ...paths,
     ...inputs,
     signal: controller.signal,
-    review: async (_request, _outputDirectory, { signal }) => {
+    review: async (_request, _outputDirectory, { signal } = {}) => {
+      assert.ok(signal);
       assert.equal(signal, controller.signal);
-      return await new Promise((_resolve, reject) => {
+      return await new Promise<ReviewResult>((_resolve, reject) => {
         signal.addEventListener(
           "abort",
           () =>
@@ -302,7 +359,11 @@ test("cancellation reaches core and remains a failed diagnostic outcome", async 
       });
     },
   });
-  await assert.rejects(pending, (error) => error.code === "cancelled");
+  await assert.rejects(
+    pending,
+    (error) =>
+      error instanceof Error && "code" in error && error.code === "cancelled",
+  );
   assert.match(
     await readFile(paths.outputsFile, "utf8"),
     /review-status=failed/,
@@ -313,9 +374,13 @@ test("outer launcher forwards cancellation to sudo and removes handlers after ex
   const { EventEmitter } = await import("node:events");
   const { forwardCancellation } = await import("./isolate.ts");
   const signalSource = new EventEmitter();
-  const child = new EventEmitter();
-  const forwarded = [];
-  child.kill = (signal) => forwarded.push(signal);
+  const forwarded: (NodeJS.Signals | number | undefined)[] = [];
+  const child = Object.assign(new ChildProcess(), {
+    kill: (signal?: NodeJS.Signals | number) => {
+      forwarded.push(signal);
+      return true;
+    },
+  }) satisfies Pick<ChildProcess, "once" | "kill">;
   forwardCancellation(child, signalSource);
   signalSource.emit("SIGINT");
   signalSource.emit("SIGTERM");
@@ -326,7 +391,7 @@ test("outer launcher forwards cancellation to sudo and removes handlers after ex
 });
 
 test("documented Action defaults stay aligned with the core defaults", async () => {
-  const { reviewDefaults } = await import("./dist/core/index.mjs");
+  const { reviewDefaults } = await loadBundledCore();
   const parsed = parseReviewInputs({ appUrl: inputs.appUrl });
   assert.deepEqual(parsed.scope, [...reviewDefaults.scope]);
   assert.deepEqual(parsed.viewports, reviewDefaults.viewports);
@@ -344,4 +409,40 @@ test("documented Action defaults stay aligned with the core defaults", async () 
   assert.ok(
     action.includes(`default: "${reviewDefaults.reviewTimeoutMs / 60000}"`),
   );
+});
+
+test("rejects malformed Action command arguments before setup or review", () => {
+  for (const args of [
+    ["runtime"],
+    ["runtime", "one"],
+    ["runtime", "one", "two", "extra"],
+    ["run"],
+    ["run", "one"],
+  ]) {
+    const result = spawnSync(
+      process.execPath,
+      [
+        fileURLToPath(new URL("./githubActionAdapter.ts", import.meta.url)),
+        ...args,
+      ],
+      { encoding: "utf8", timeout: 10000 },
+    );
+    assert.ifError(result.error);
+    assert.equal(result.status, 1);
+    assert.match(
+      result.stderr,
+      /Expected runtime OUTPUT_FILE TEMP_DIRECTORY|Expected 11 run arguments/,
+    );
+  }
+});
+
+test("the committed bundle exposes the expected runtime exports", async () => {
+  const core = await loadBundledCore();
+  assert.deepEqual(Object.keys(core).sort(), [
+    "ReviewError",
+    "reviewDefaults",
+    "runReview",
+  ]);
+  assert.equal(typeof core.runReview, "function");
+  assert.equal(typeof core.ReviewError, "function");
 });

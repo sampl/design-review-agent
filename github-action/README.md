@@ -142,7 +142,8 @@ Findings are recommendations; even severe design findings do not fail execution.
 
 ## Implementation
 
-- `githubActionAdapter.mjs` maps GitHub inputs and outputs to the bundled core lifecycle.
+- `githubActionAdapter.ts` maps typed GitHub inputs and outputs to the bundled core lifecycle. Node 24 runs this TypeScript directly.
+- `bundledCore.ts` loads the committed core build using the source package’s type contract; production never imports core source.
 - `isolate.ts` launches the adapter after dropping disposable-runner privileges.
 - [Build scripts](build-scripts/README.md) generate the committed runtime in `dist/core/` from local core source.
 - [Vendored helpers](vendor/openai-codex-action/README.md) document upstream isolation code and its license.
@@ -152,8 +153,7 @@ Findings are recommendations; even severe design findings do not fail execution.
 
 ### Personal prototype
 
-- Verify the new Action path and dependency setup on a disposable GitHub runner.
-- Record the tested workflow revision, inspect the downloaded report and screenshots, and test failure and timeout recovery.
+- A successful Action run was reported on October 29, 2026. Record its workflow and Action revisions, and explicitly verify the extracted report, failure recovery, and timeout behavior.
 
 ### Friendly alpha
 

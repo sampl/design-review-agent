@@ -1,4 +1,5 @@
 // Tests shared review preparation and failure handling without model or browser calls.
+import { fixtureValue } from "../report-format/fixtures/contract.ts";
 import assert from "node:assert/strict";
 import { afterAll, beforeAll, it } from "vitest";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -10,10 +11,10 @@ import {
 } from "../report-format/fixtures/contract.ts";
 import {
   prepareReview,
+  executeReview,
   finalizeReview,
   type ReviewRequest,
-} from "./runReview.ts";
-import { executeReview } from "./reviewExecution.ts";
+} from "./reviewLifecycle.ts";
 import { ReviewError } from "./reviewError.ts";
 import { buildViewer } from "../build-scripts/buildViewer.ts";
 
@@ -161,8 +162,8 @@ it("rejects reported pages and screenshot viewports outside the configured scope
   const prepared = await prepareReview(await request());
   const report = completeReport();
   report.review.baseUrl = prepared.context.request.appUrl;
-  report.issues = [report.issues[0]];
-  const evidence = report.issues[0].evidence;
+  report.issues = [fixtureValue(report.issues[0])];
+  const evidence = fixtureValue(report.issues[0]).evidence;
   if (evidence.kind !== "screenshot")
     throw new Error("Expected screenshot fixture");
   delete evidence.proposedAfter;
@@ -174,7 +175,7 @@ it("rejects reported pages and screenshot viewports outside the configured scope
     ),
     /outside the supplied scope/,
   );
-  report.issues[0].locations = [{ name: "Home", url: "/" }];
+  fixtureValue(report.issues[0]).locations = [{ name: "Home", url: "/" }];
   evidence.before.route = "/";
   await assert.rejects(
     finalizeReview(
@@ -226,10 +227,10 @@ it("marks missing route and viewport captures incomplete and packages the receip
   );
   assert.equal(finalized.status, "incomplete");
   assert.equal(finalized.report.issues.length, 0);
-  assert.match(finalized.runIssues[0].message, /services/);
+  assert.match(fixtureValue(finalized.runIssues[0]).message, /services/);
   assert.ok(
     finalized.report.review.limitations.includes(
-      finalized.runIssues[0].message,
+      fixtureValue(finalized.runIssues[0]).message,
     ),
   );
   const receipt = JSON.parse(
@@ -246,7 +247,7 @@ it("marks missing route and viewport captures incomplete and packages the receip
 it("rejects an out-of-scope coverage capture before packaging", async () => {
   const prepared = await prepareReview(await request());
   const result = response();
-  result.captures[0].route = "/contact/";
+  fixtureValue(result.captures[0]).route = "/contact/";
   await assert.rejects(
     finalizeReview(prepared.context, result, join(root, "outside-capture"), {
       viewerDirectory,
@@ -334,7 +335,7 @@ it("preserves agent-reported execution failures as typed run issues", async () =
     (error: unknown) =>
       error instanceof ReviewError &&
       error.code === "agent-failed" &&
-      error.runIssues[0].code === "browser-unavailable",
+      fixtureValue(error.runIssues[0]).code === "browser-unavailable",
   );
 });
 

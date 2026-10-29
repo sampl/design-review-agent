@@ -1,4 +1,5 @@
 // Tests accepted reports and rejected inputs through the public validation API.
+import { fixtureValue } from "./fixtures/contract.ts";
 
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
@@ -85,7 +86,8 @@ describe("public report boundary", () => {
   it("does not mutate valid or invalid input or previous diagnostics", () => {
     for (const valid of [true, false]) {
       const report = completeReport();
-      if (!valid) report.issues[1].id = report.issues[0].id;
+      if (!valid)
+        fixtureValue(report.issues[1]).id = fixtureValue(report.issues[0]).id;
       const snapshot = structuredClone(report);
       const first = structuredClone(validateReport(report));
       assert.deepEqual(validateReport(report), first);
@@ -142,10 +144,10 @@ describe("strict schema", () => {
   it("rejects legacy evidence arrays without rewriting or dropping entries", () => {
     for (const evidence of [
       [],
-      [completeReport().issues[0].evidence],
+      [fixtureValue(completeReport().issues[0]).evidence],
       [
-        completeReport().issues[0].evidence,
-        completeReport().issues[1].evidence,
+        fixtureValue(completeReport().issues[0]).evidence,
+        fixtureValue(completeReport().issues[1]).evidence,
       ],
       null,
       {},
@@ -159,7 +161,9 @@ describe("strict schema", () => {
   });
   it("keeps warnings screenshot-free", () => {
     const report = completeReport();
-    objectAt(report, "/warnings/0").evidence = report.issues[0].evidence;
+    objectAt(report, "/warnings/0").evidence = fixtureValue(
+      report.issues[0],
+    ).evidence;
     rejects(report, "schema");
   });
   it("requires boolean area coverage", () => {
@@ -224,7 +228,7 @@ describe("strict schema", () => {
     ["/issues/1/evidence", "method"],
     ["/issues/1/evidence", "location"],
     ["/issues/1/evidence", "state"],
-  ]) {
+  ] as const) {
     it(`requires nonblank ${path}/${field}`, () => {
       const report = completeReport();
       objectAt(report, path)[field] = " \n\t ";
@@ -267,7 +271,7 @@ describe("strict schema", () => {
   ]) {
     it(`rejects malformed scope ${JSON.stringify(scope)}`, () => {
       const report = completeReport();
-      Object.assign(report.issues[0], { scope });
+      Object.assign(fixtureValue(report.issues[0]), { scope });
       rejects(report, "schema");
     });
   }
@@ -299,27 +303,29 @@ describe("strict schema", () => {
 describe("IDs and area references", () => {
   it("rejects duplicate areas", () => {
     const report = completeReport();
-    report.review.areas[1].id = report.review.areas[0].id;
+    fixtureValue(report.review.areas[1]).id = fixtureValue(
+      report.review.areas[0],
+    ).id;
     rejects(report, "duplicate-id");
   });
   it("rejects duplicate issues", () => {
     const report = completeReport();
-    report.issues[1].id = report.issues[0].id;
+    fixtureValue(report.issues[1]).id = fixtureValue(report.issues[0]).id;
     rejects(report, "duplicate-id");
   });
   it("rejects duplicate warnings", () => {
     const report = completeReport();
-    report.warnings.push(structuredClone(report.warnings[0]));
+    report.warnings.push(structuredClone(fixtureValue(report.warnings[0])));
     rejects(report, "duplicate-id");
   });
   it("uses one issue and warning ID namespace", () => {
     const report = completeReport();
-    report.warnings[0].id = report.issues[0].id;
+    fixtureValue(report.warnings[0]).id = fixtureValue(report.issues[0]).id;
     rejects(report, "duplicate-id");
   });
   it("keeps the area ID namespace separate", () => {
     const report = completeReport();
-    report.issues[0].id = report.review.areas[0].id;
+    fixtureValue(report.issues[0]).id = fixtureValue(report.review.areas[0]).id;
     assert.equal(validateReport(report).valid, true);
   });
   for (const path of ["/issues/1/scope", "/warnings/0/scope"]) {
@@ -333,7 +339,7 @@ describe("IDs and area references", () => {
     assert.equal(validateReport(warningsOnlyReport()).valid, true));
   it("does not run semantic checks on malformed input", () => {
     const report = completeReport();
-    report.issues[1].id = report.issues[0].id;
+    fixtureValue(report.issues[1]).id = fixtureValue(report.issues[0]).id;
     objectAt(report, "/review").areas = null;
     assert.ok(rejects(report).every((error) => error.code === "schema"));
   });
@@ -347,7 +353,7 @@ describe("evidence boundary", () => {
     ["imageDimensions", "height"],
     ["scroll", "x"],
     ["scroll", "y"],
-  ]) {
+  ] as const) {
     it(`rejects proposal mismatch in ${metadata}/${field}`, () => {
       const report = completeReport();
       const proposalMetadata = objectAt(
@@ -490,7 +496,7 @@ describe("structured finding locations", () => {
   ]) {
     it(`preserves an authored location reference ${url}`, () => {
       const report = completeReport();
-      report.issues[0].locations = [{ name: "Settings", url }];
+      fixtureValue(report.issues[0]).locations = [{ name: "Settings", url }];
       assert.deepEqual(validateReport(report), { valid: true, report });
     });
   }
@@ -510,7 +516,7 @@ describe("structured finding locations", () => {
   ]) {
     it(`rejects a location that is not an app route ${JSON.stringify(url)}`, () => {
       const report = completeReport();
-      report.issues[0].locations = [{ name: "Settings", url }];
+      fixtureValue(report.issues[0]).locations = [{ name: "Settings", url }];
       const errors = rejects(report, "schema");
       assert.ok(
         errors.some((error) => error.path === "/issues/0/locations/0/url"),

@@ -5,7 +5,7 @@ export default defineConfig({
     include: [
       "core/**/*.test.ts",
       "cli/**/*.test.ts",
-      "github-action/**/*.test.mjs",
+      "github-action/**/*.test.ts",
     ],
     exclude: ["**/dist/**", "**/node_modules/**"],
   },

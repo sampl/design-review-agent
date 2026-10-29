@@ -1,6 +1,8 @@
 {
   "compilerOptions": {
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "moduleResolution": "bundler",
     "target": "ES2023",
     "module": "ESNext",
@@ -10,7 +12,9 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "types": ["node"],
-    "lib": ["ES2023", "DOM", "DOM.Iterable"]
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true
   },
   "include": [
     "core/**/*.ts",

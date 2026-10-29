@@ -131,7 +131,7 @@ export async function runCli(
     const result = await (context.review ?? runReview)(
       request,
       outputDirectory,
-      { signal: context.signal },
+      context.signal ? { signal: context.signal } : {},
     );
     context.write(
       JSON.stringify({

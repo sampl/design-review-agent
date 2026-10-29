@@ -141,6 +141,8 @@ Update this list when files are added, moved, or removed.
 
 ## Testing
 
+- Gallery input tests verify empty galleries stay closed and invalid indices fail before browser state changes.
+
 - Test safe text rendering and complete Markdown output; reject the same invalid report fixtures as the generator.
 - Browser checks cover index/detail routes, Back/Forward, direct links, animated and reduced-motion dismissal, focus restoration, evidence, empty/warning states, search, issue-type filtering, Markdown copy success/failure, prefilled Linear and optional GitHub links, nested screenshot enlargement, image cycling by arrows and keyboard, and desktop/mobile resizing, keyboard navigation, both themes, narrow layouts, and long content.
 - Verify embedded-data parsing and text safety, HTTP fetch/validation failures, unsupported versions, and development HTTP-serving guidance. Confirm relative assets remain intact after moving the production folder and production reports need no network requests.

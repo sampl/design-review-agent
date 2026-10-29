@@ -7215,7 +7215,7 @@ var require_dist = __commonJS({
 import { readFile as readFile4, writeFile as writeFile2 } from "node:fs/promises";
 import { parseArgs } from "node:util";
 
-// core/run-review/runReview.ts
+// core/run-review/reviewLifecycle.ts
 var import_ajv3 = __toESM(require_ajv(), 1);
 import { readFile as readFile3, mkdir as mkdir2, access as access2 } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -7695,8 +7695,8 @@ function pngDimensions(bytes) {
   const height = bytes.readUInt32BE(20);
   if (!width || !height || width * height > 1e8)
     throw new Error("Screenshot dimensions exceed the supported image bounds.");
-  const bitDepth = bytes[24];
-  const colorType = bytes[25];
+  const bitDepth = bytes.readUInt8(24);
+  const colorType = bytes.readUInt8(25);
   const channels = (/* @__PURE__ */ new Map([
     [0, 1],
     [2, 3],
@@ -7738,7 +7738,7 @@ function pngDimensions(bytes) {
   if (pixels.length !== expectedLength)
     throw new Error("Screenshot PNG image data does not match its dimensions.");
   for (let row = 0; row < height; row++)
-    if (pixels[row * rowLength] > 4)
+    if (pixels.readUInt8(row * rowLength) > 4)
       throw new Error("Screenshot PNG contains an invalid row filter.");
   return { width, height };
 }
@@ -8140,67 +8140,6 @@ Your working root is a temporary execution directory, not the app checkout. Insp
   }
 }
 
-// core/run-review/reviewExecution.ts
-async function executeReview(request, outputDirectory, options, executeAgent) {
-  if (options.signal?.aborted)
-    throw new ReviewError("cancelled", "Design review was cancelled.");
-  let prepared;
-  try {
-    prepared = await prepareReview(request);
-  } catch {
-    throw new ReviewError(
-      "invalid-request",
-      "Review inputs or shared guidance could not be prepared."
-    );
-  }
-  const controller2 = new AbortController();
-  const cancel2 = () => controller2.abort(
-    new ReviewError("cancelled", "Design review was cancelled.")
-  );
-  options.signal?.addEventListener("abort", cancel2, { once: true });
-  if (options.signal?.aborted) cancel2();
-  const timer = setTimeout(
-    () => controller2.abort(
-      new ReviewError(
-        "timeout",
-        "Design review exceeded its agent execution budget."
-      )
-    ),
-    request.reviewTimeoutMs ?? runtimeRequirements.reviewTimeoutMs
-  );
-  try {
-    const response = await executeAgent(prepared, controller2.signal);
-    clearTimeout(timer);
-    if (controller2.signal.aborted) throw controller2.signal.reason;
-    options.signal?.removeEventListener("abort", cancel2);
-    try {
-      return await finalizeReview(
-        prepared.context,
-        response,
-        outputDirectory,
-        options
-      );
-    } catch (error) {
-      if (error instanceof ReviewError) throw error;
-      throw new ReviewError(
-        "finalization-failed",
-        "Review response or evidence could not be validated and packaged."
-      );
-    }
-  } catch (error) {
-    if (controller2.signal.aborted) throw controller2.signal.reason;
-    if (error instanceof ReviewError) throw error;
-    throw new ReviewError(
-      "agent-failed",
-      "The review agent failed before completing its response."
-    );
-  } finally {
-    clearTimeout(timer);
-    options.signal?.removeEventListener("abort", cancel2);
-    controller2.abort();
-  }
-}
-
 // core/run-review/assetRoot.ts
 import { access } from "node:fs/promises";
 async function resolveAssetRoot(moduleUrl = import.meta.url) {
@@ -8214,7 +8153,7 @@ async function resolveAssetRoot(moduleUrl = import.meta.url) {
   throw new Error("Shared review assets could not be located.");
 }
 
-// core/run-review/runReview.ts
+// core/run-review/reviewLifecycle.ts
 var reviewDefaults = Object.freeze({
   scope: Object.freeze(["/"]),
   viewports: Object.freeze(
@@ -8487,6 +8426,67 @@ async function finalizeReview(context, response, outputDirectory, options = {}) 
     status: runIssues.length ? "incomplete" : "complete"
   };
 }
+async function executeReview(request, outputDirectory, options, executeAgent) {
+  if (options.signal?.aborted)
+    throw new ReviewError("cancelled", "Design review was cancelled.");
+  let prepared;
+  try {
+    prepared = await prepareReview(request);
+  } catch {
+    throw new ReviewError(
+      "invalid-request",
+      "Review inputs or shared guidance could not be prepared."
+    );
+  }
+  const controller2 = new AbortController();
+  const cancel2 = () => controller2.abort(
+    new ReviewError("cancelled", "Design review was cancelled.")
+  );
+  options.signal?.addEventListener("abort", cancel2, { once: true });
+  if (options.signal?.aborted) cancel2();
+  const timer = setTimeout(
+    () => controller2.abort(
+      new ReviewError(
+        "timeout",
+        "Design review exceeded its agent execution budget."
+      )
+    ),
+    request.reviewTimeoutMs ?? runtimeRequirements.reviewTimeoutMs
+  );
+  try {
+    const response = await executeAgent(prepared, controller2.signal);
+    clearTimeout(timer);
+    if (controller2.signal.aborted) throw controller2.signal.reason;
+    options.signal?.removeEventListener("abort", cancel2);
+    try {
+      return await finalizeReview(
+        prepared.context,
+        response,
+        outputDirectory,
+        options
+      );
+    } catch (error) {
+      if (error instanceof ReviewError) throw error;
+      throw new ReviewError(
+        "finalization-failed",
+        "Review response or evidence could not be validated and packaged."
+      );
+    }
+  } catch (error) {
+    if (controller2.signal.aborted) throw controller2.signal.reason;
+    if (error instanceof ReviewError) throw error;
+    throw new ReviewError(
+      "agent-failed",
+      "The review agent failed before completing its response."
+    );
+  } finally {
+    clearTimeout(timer);
+    options.signal?.removeEventListener("abort", cancel2);
+    controller2.abort();
+  }
+}
+
+// core/run-review/runReview.ts
 async function runReview(request, outputDirectory, options = {}) {
   return await executeReview(
     request,
@@ -8537,9 +8537,9 @@ try {
       ),
       required2("output"),
       {
-        viewerDirectory: values.viewer,
+        ...values.viewer !== void 0 ? { viewerDirectory: values.viewer } : {},
         signal: controller.signal,
-        responsesProxyUrl: values["responses-proxy-url"]
+        ...values["responses-proxy-url"] !== void 0 ? { responsesProxyUrl: values["responses-proxy-url"] } : {}
       }
     );
     console.info(JSON.stringify(result));
@@ -8559,7 +8559,7 @@ try {
       await json(required2("context")),
       await json(required2("response")),
       required2("output"),
-      { viewerDirectory: values.viewer }
+      values.viewer !== void 0 ? { viewerDirectory: values.viewer } : {}
     );
     console.info(
       JSON.stringify({

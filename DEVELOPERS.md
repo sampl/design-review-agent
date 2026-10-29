@@ -43,7 +43,7 @@ Keep module and submodule READMEs alongside their code. Shared contributor tooli
 ### Upstream isolation code
 
 - The vendored `dropSudo.ts` and `linuxCredentials.ts`, plus the root/setpriv shell sequence in `isolate.ts`, come from [OpenAI Codex Action commit 86365089eb2b84e0a8fb0717b304f8bdcb13b20e](https://github.com/openai/codex-action/tree/86365089eb2b84e0a8fb0717b304f8bdcb13b20e).
-- The vendored source changes only the explicit `.ts` import and type-only import needed by Node 24. Our launcher runs the core adapter instead of upstream's Codex invocation, with an explicit Node path and the debugger option disabled.
+- The vendored source adds the explicit `.ts` import and type-only import needed by Node 24, plus erased assertions for the invoked script path and the existing equal-length group-name invariant. Our launcher runs the core adapter instead of upstream's Codex invocation, with an explicit Node path and the debugger option disabled.
 - Tests pin the source and shell-sequence hashes. Review and update them together when upgrading upstream, and preserve the included [Apache license](github-action/vendor/openai-codex-action/LICENSE).
 - Local unit tests do not execute privileged account/socket changes. Those changes are part of the real disposable-runner workflow; a successful run does not establish every isolation or failure case.
 
@@ -53,7 +53,7 @@ Keep module and submodule READMEs alongside their code. Shared contributor tooli
 - One workspace lockfile and root development dependencies serve every module. Core, CLI, and Action manifests own their runtime dependencies and module-specific commands.
 - `pnpm test` runs all core, CLI, viewer, and Action unit tests through Vitest without model calls.
 - `pnpm ts`, `pnpm lint`, `pnpm format:check`, and `pnpm spellcheck` check the workspace. `pnpm format` applies formatting.
-- The single root TypeScript configuration covers handwritten TypeScript, including browser code and tests. Generated output and vendored helpers are excluded from ordinary checks; dedicated Action tests check vendor integrity.
+- The single root TypeScript configuration covers handwritten TypeScript, including the Action adapter, browser code, and tests, and enables unused-local, unused-parameter, checked indexed-access, and exact optional-property checks. Generated output is excluded. Imported vendored helpers are also type-checked; they stay excluded from formatting and linting, and dedicated Action tests check vendor integrity.
 - `pnpm build:viewer` builds viewer assets and synthetic development previews. `pnpm build:action` generates the committed Action runtime.
 - Keep packages private. CLI and skill installation and package publication are deferred; local testing uses this checkout.
 
@@ -76,5 +76,5 @@ Keep module and submodule READMEs alongside their code. Shared contributor tooli
 
 ### Personal prototype
 
-- Verify the relocated Action and frozen production dependency installation on a disposable runner. Check report delivery, failure recovery, and timeout behavior.
+- The first successful Action run is recorded above. Verify downloaded-report delivery, failure recovery, and timeout behavior on a disposable runner.
 - Record the validated workflow and Action revision before recommending a published commit.

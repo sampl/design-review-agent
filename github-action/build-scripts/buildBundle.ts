@@ -50,7 +50,7 @@ try {
   for (const [entry, filename] of [
     ["index.ts", "index.mjs"],
     ["cli.ts", "cli.mjs"],
-  ])
+  ] as const)
     await build({
       entryPoints: [join(packageDirectory, entry)],
       outfile: join(staging, filename),
@@ -115,10 +115,13 @@ try {
     const document = await readFile(documentPath, "utf8");
     const links = [...document.matchAll(/\[([^\]]+)\]\(([^)]+)\)/g)];
     let bundledDocument = document;
-    for (const [markup, label, target] of links) {
+    for (const match of links) {
+      const markup = match[0];
+      const label = match[1]!;
+      const target = match[2]!;
       if (/^[a-z]+:|^#/i.test(target)) continue;
       try {
-        await readFile(resolve(dirname(documentPath), target.split("#")[0]));
+        await readFile(resolve(dirname(documentPath), target.split("#")[0]!));
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
         bundledDocument = bundledDocument.replaceAll(markup, label);

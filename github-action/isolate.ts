@@ -1,5 +1,6 @@
 // Launches the shared core through the pinned upstream Linux privilege boundary.
 import { spawn, type ChildProcess } from "node:child_process";
+import type { EventEmitter } from "node:events";
 import { userInfo } from "node:os";
 import { delimiter, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -122,7 +123,7 @@ export function isolationCommand(
 
 export function forwardCancellation(
   child: Pick<ChildProcess, "kill" | "once">,
-  signalSource: Pick<NodeJS.Process, "on" | "removeListener"> = process,
+  signalSource: Pick<EventEmitter, "on" | "removeListener"> = process,
 ) {
   const interrupt = () => {
     child.kill("SIGINT");
@@ -144,7 +145,12 @@ export function forwardCancellation(
 async function main() {
   const [command, ...args] = process.argv.slice(2);
   if (command === "drop-sudo") {
-    const argument = (name: string) => args[args.indexOf(name) + 1];
+    const argument = (name: string): string => {
+      const index = args.indexOf(name);
+      const value = index >= 0 ? args[index + 1] : undefined;
+      if (!value || value.startsWith("--")) throw new Error(`Missing ${name}.`);
+      return value;
+    };
     await dropSudo({
       user: argument("--user"),
       group: argument("--group"),

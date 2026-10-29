@@ -1,4 +1,5 @@
 // Compile-time consumer contract: execution is selected internally, not by adapters.
+import { fixtureValue } from "../report-format/fixtures/contract.ts";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import {
@@ -29,5 +30,5 @@ it("exposes the small review entry point, shared defaults, and typed failures", 
   ]);
   const failure = new ReviewError("timeout", "Review stopped.");
   assert.equal(failure.code, "timeout");
-  assert.equal(failure.runIssues[0].severity, "error");
+  assert.equal(fixtureValue(failure.runIssues[0]).severity, "error");
 });

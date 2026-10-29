@@ -1,5 +1,5 @@
 // Gives every automated caller the same execution failure vocabulary.
-import type { RunIssue } from "./runReview.ts";
+import type { RunIssue } from "./reviewLifecycle.ts";
 
 export type ReviewErrorCode =
   | "invalid-request"

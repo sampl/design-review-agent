@@ -12,7 +12,11 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { completeReport, emptyReport } from "./fixtures/contract.ts";
+import {
+  fixtureValue,
+  completeReport,
+  emptyReport,
+} from "./fixtures/contract.ts";
 import { packageReport } from "./packageReport.ts";
 import { buildViewer } from "../build-scripts/buildViewer.ts";
 
@@ -39,7 +43,7 @@ async function scenario() {
   await writeFile(join(evidenceDirectory, "images/settings-before.png"), png);
   await writeFile(join(evidenceDirectory, "images/settings-proposal.png"), png);
   const report = completeReport();
-  const evidence = report.issues[0].evidence;
+  const evidence = fixtureValue(report.issues[0]).evidence;
   if (evidence.kind !== "screenshot")
     throw new Error("Expected screenshot fixture");
   evidence.before.imageDimensions = { width: 1, height: 1 };
@@ -63,8 +67,10 @@ it("packages embedded, text-safe HTML, separate JSON, schema, and deduplicated r
   assert.ok(!html.includes('src="./viewer.js"'));
   assert.ok(!html.includes('href="./viewer.css"'));
   assert.ok(!html.includes("</script><img src=x"));
-  const embedded = html.match(/id="design-qa-report">(.*?)<\/script>/s)?.[1];
-  assert.deepEqual(JSON.parse(embedded!), result.report);
+  const embedded = fixtureValue(
+    html.match(/id="design-qa-report">(.*?)<\/script>/s)?.[1],
+  );
+  assert.deepEqual(JSON.parse(embedded), result.report);
   assert.deepEqual(
     JSON.parse(
       await readFile(join(input.outputDirectory, "report.json"), "utf8"),
@@ -75,7 +81,7 @@ it("packages embedded, text-safe HTML, separate JSON, schema, and deduplicated r
     (await readdir(join(input.outputDirectory, "images"))).length,
     1,
   );
-  const evidence = result.report.issues[0].evidence;
+  const evidence = fixtureValue(result.report.issues[0]).evidence;
   if (evidence.kind !== "screenshot")
     throw new Error("Expected screenshot fixture");
   assert.match(evidence.before.image, /^images\/[a-f0-9]+\.png$/);
@@ -123,7 +129,7 @@ for (const failure of [
 ]) {
   it(`rejects ${failure} before publishing a report`, async () => {
     const input = await scenario();
-    const evidence = input.report.issues[0].evidence;
+    const evidence = fixtureValue(input.report.issues[0]).evidence;
     if (evidence.kind !== "screenshot")
       throw new Error("Expected screenshot fixture");
     if (failure === "invalid-report") input.report.review.title = "";
@@ -138,7 +144,7 @@ for (const failure of [
       );
     if (failure === "corrupt-png") {
       const corrupt = Buffer.from(png);
-      corrupt[44] ^= 255;
+      corrupt.writeUInt8(corrupt.readUInt8(44) ^ 255, 44);
       await writeFile(
         join(input.evidenceDirectory, evidence.before.image),
         corrupt,

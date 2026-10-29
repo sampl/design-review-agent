@@ -1,7 +1,10 @@
 // Verifies observable filtering, summaries, and complete handoff behavior.
 import { describe, it } from "vitest";
 import assert from "node:assert/strict";
-import { completeReport } from "../report-format/fixtures/contract.ts";
+import {
+  fixtureValue,
+  completeReport,
+} from "../report-format/fixtures/contract.ts";
 import {
   reviewedAtLabel,
   visibleIssues,
@@ -26,12 +29,15 @@ describe("viewer model", () => {
   it("omits the GitHub destination when the report has no repository", () => {
     const report = completeReport();
     delete report.review.githubRepository;
-    assert.equal(findingGithubUrl(report, report.issues[0]), null);
+    assert.equal(
+      findingGithubUrl(report, fixtureValue(report.issues[0])),
+      null,
+    );
   });
 
   it("prefills the authored GitHub repository with the exact title and full Markdown", () => {
     const report = completeReport();
-    const issue = report.issues[0];
+    const issue = fixtureValue(report.issues[0]);
     issue.title = "Fix A+B & café / 日本語? #1";
     issue.problem = "Preserve 100% width & line breaks\n?body=other#fragment";
     const original = structuredClone(report);
@@ -54,7 +60,7 @@ describe("viewer model", () => {
   it("keeps long nonvisual evidence intact in GitHub issue descriptions", () => {
     const report = completeReport();
     report.review.githubRepository = "https://github.com/Example-Org/.github";
-    const issue = report.issues[1];
+    const issue = fixtureValue(report.issues[1]);
     issue.problem = "Long finding. ".repeat(500);
     const destination = new URL(findingGithubUrl(report, issue)!);
     assert.equal(destination.pathname, "/Example-Org/.github/issues/new");
@@ -66,7 +72,7 @@ describe("viewer model", () => {
 
   it("prefills Linear with the exact title and complete Markdown without leaking query delimiters", () => {
     const report = completeReport();
-    const issue = report.issues[0];
+    const issue = fixtureValue(report.issues[0]);
     issue.title = "Fix search & filters + café / 日本語? #1";
     issue.problem =
       "Use A+B, 100% width & preserve\nnew lines? priority=urgent#details";
@@ -89,7 +95,7 @@ describe("viewer model", () => {
 
   it("preserves nonvisual evidence and long content in the Linear description", () => {
     const report = completeReport();
-    const issue = report.issues[1];
+    const issue = fixtureValue(report.issues[1]);
     issue.problem = "Long finding description. ".repeat(500);
     const destination = new URL(findingLinearUrl(report, issue));
     const description = destination.searchParams.get("description");
@@ -130,10 +136,10 @@ describe("viewer model", () => {
   it("draws exact proportional slices with shared boundaries and priority counts", () => {
     const report = completeReport();
     report.issues = [
-      report.issues[0],
-      report.issues[1],
-      report.issues[2],
-      report.issues[2],
+      fixtureValue(report.issues[0]),
+      fixtureValue(report.issues[1]),
+      fixtureValue(report.issues[2]),
+      fixtureValue(report.issues[2]),
     ];
     const segments = priorityDonutSegments(report);
     assert.deepEqual(
@@ -159,9 +165,13 @@ describe("viewer model", () => {
     ];
     segments.forEach((segment, segmentIndex) => {
       const actual = coordinates(segment.path);
-      assert.equal(actual.length, expected[segmentIndex].length);
+      assert.equal(actual.length, fixtureValue(expected[segmentIndex]).length);
       actual.forEach((value, index) => {
-        assert.ok(Math.abs(value - expected[segmentIndex][index]) < 1e-10);
+        assert.ok(
+          Math.abs(
+            value - fixtureValue(fixtureValue(expected[segmentIndex])[index]),
+          ) < 1e-10,
+        );
       });
     });
   });
@@ -170,33 +180,41 @@ describe("viewer model", () => {
     const report = completeReport();
     report.issues = [];
     assert.ok(priorityDonutSegments(report).every(({ path }) => path === ""));
-    report.issues = [completeReport().issues[1]];
+    report.issues = [fixtureValue(completeReport().issues[1])];
     const segments = priorityDonutSegments(report);
-    assert.equal(segments[1].percentage, 100);
-    assert.equal(segments[1].offset, 0);
-    assert.equal(segments[1].label, "Medium priority · 1 issue");
-    assert.equal((segments[1].path.match(/ A /g) ?? []).length, 4);
-    assert.equal((segments[1].path.match(/ Z/g) ?? []).length, 2);
-    assert.ok(!segments[1].path.includes(" L "));
-    assert.equal(segments[0].path, "");
-    assert.equal(segments[2].path, "");
+    assert.equal(fixtureValue(segments[1]).percentage, 100);
+    assert.equal(fixtureValue(segments[1]).offset, 0);
+    assert.equal(fixtureValue(segments[1]).label, "Medium priority · 1 issue");
+    assert.equal(
+      (fixtureValue(segments[1]).path.match(/ A /g) ?? []).length,
+      4,
+    );
+    assert.equal((fixtureValue(segments[1]).path.match(/ Z/g) ?? []).length, 2);
+    assert.ok(!fixtureValue(segments[1]).path.includes(" L "));
+    assert.equal(fixtureValue(segments[0]).path, "");
+    assert.equal(fixtureValue(segments[2]).path, "");
   });
 
   it("preserves tiny and majority slices at their full data proportions", () => {
     const report = completeReport();
     report.issues = [
-      ...Array.from({ length: 9999 }, () => ({ ...report.issues[0] })),
-      report.issues[1],
+      ...Array.from({ length: 9999 }, () => ({
+        ...fixtureValue(report.issues[0]),
+      })),
+      fixtureValue(report.issues[1]),
     ];
     const segments = priorityDonutSegments(report);
-    assert.equal(segments[0].count, 9999);
-    assert.equal(segments[1].count, 1);
-    assert.equal(segments[1].percentage, 0.01);
-    assert.equal(segments[1].offset, segments[0].percentage);
-    assert.ok(segments[0].path.includes("A 41 41 0 1 1"));
-    assert.ok(segments[0].path.includes("A 27 27 0 1 0"));
-    assert.ok(segments[1].path.includes("A 41 41 0 0 1"));
-    assert.equal(segments[2].path, "");
+    assert.equal(fixtureValue(segments[0]).count, 9999);
+    assert.equal(fixtureValue(segments[1]).count, 1);
+    assert.equal(fixtureValue(segments[1]).percentage, 0.01);
+    assert.equal(
+      fixtureValue(segments[1]).offset,
+      fixtureValue(segments[0]).percentage,
+    );
+    assert.ok(fixtureValue(segments[0]).path.includes("A 41 41 0 1 1"));
+    assert.ok(fixtureValue(segments[0]).path.includes("A 27 27 0 1 0"));
+    assert.ok(fixtureValue(segments[1]).path.includes("A 41 41 0 0 1"));
+    assert.equal(fixtureValue(segments[2]).path, "");
     assert.ok(segments.every(({ path }) => !/NaN|Infinity/.test(path)));
   });
 
@@ -294,12 +312,12 @@ describe("viewer model", () => {
   it("preserves unresolved app routes as plain Markdown", () => {
     const report = completeReport();
     delete report.review.baseUrl;
-    const markdown = findingMarkdown(report, report.issues[0]);
+    const markdown = findingMarkdown(report, fixtureValue(report.issues[0]));
     assert.ok(markdown.includes("Account settings — /settings"));
     assert.ok(!markdown.includes("App base URL:"));
   });
   it("previews three warnings and reveals the exact remaining collection without mutation", () => {
-    const template = completeReport().warnings[0];
+    const template = fixtureValue(completeReport().warnings[0]);
     for (const count of [0, 1, 3, 8]) {
       const warnings = Array.from({ length: count }, (_, index) => ({
         ...structuredClone(template),
@@ -318,7 +336,7 @@ describe("viewer model", () => {
   });
   it("copies textual visual and nonvisual evidence and finding details as inert Markdown", () => {
     const report = completeReport();
-    const issue = report.issues[0];
+    const issue = fixtureValue(report.issues[0]);
     const markdown = findingMarkdown(report, issue);
     for (const text of [
       issue.title,
@@ -351,7 +369,7 @@ describe("viewer model", () => {
     assert.ok(!markdown.includes("## Priority rationale"));
     assert.ok(!markdown.includes("## Reproduction steps"));
     assert.ok(
-      findingMarkdown(report, report.issues[1]).includes(
+      findingMarkdown(report, fixtureValue(report.issues[1])).includes(
         "Keyboard interaction",
       ),
     );
@@ -360,23 +378,27 @@ describe("viewer model", () => {
   });
   it("searches the single evidence object and exports an unnumbered evidence section", () => {
     const report = completeReport();
-    const visual = report.issues[0].evidence;
-    const nonvisual = report.issues[1].evidence;
+    const visual = fixtureValue(report.issues[0]).evidence;
+    const nonvisual = fixtureValue(report.issues[1]).evidence;
     visual.observation = "Distinct visual observation";
     nonvisual.support = "Distinct nonvisual support";
     assert.equal(
-      visibleIssues(report, {
-        category: "accessibility",
-        query: visual.observation,
-      })[0]?.id,
-      report.issues[0].id,
+      fixtureValue(
+        visibleIssues(report, {
+          category: "accessibility",
+          query: visual.observation,
+        })[0],
+      )?.id,
+      fixtureValue(report.issues[0]).id,
     );
     assert.equal(
-      visibleIssues(report, {
-        category: "color",
-        query: nonvisual.support,
-      })[0]?.id,
-      report.issues[1].id,
+      fixtureValue(
+        visibleIssues(report, {
+          category: "color",
+          query: nonvisual.support,
+        })[0],
+      )?.id,
+      fixtureValue(report.issues[1]).id,
     );
     for (const issue of report.issues.slice(0, 2)) {
       const markdown = findingMarkdown(report, issue);

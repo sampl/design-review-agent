@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "sourceRepository": "sampl/design-review-agent",
   "sourceDirectory": "core",
-  "sourceCommit": "c1589e9d612e0dd6b8cebe1bf0f573f2ead0e212",
+  "sourceCommit": "212d8981494ce9b6cc4b1fb116f362acd77db048",
   "sourceDirty": true,
   "files": {
     "agent-prompt/agent-prompt.md": "176735950450e6c39e7e7f433a2ef3b92a5a59e22d6dafc93dc9eb8b54ec5e85",
@@ -20,17 +20,17 @@
     "agent-prompt/checks/typography.md": "61bf3bbb1e2f69d73ee4a8b57d73ce8d6c0fe71e9d8298a58d1bc81d82301590",
     "agent-prompt/README.md": "0de5be7b72f0d8a07b57db9c0c707139fd9ac43df2a68196b56bdf32b04e5a18",
     "build-scripts/README.md": "ba7e0d6746c4c6e9310f7e326926a1a06c2c22b443ef0e9908b88cda376b39c2",
-    "cli.mjs": "c142f688921e26b86ca37f8ccaf5e67318201449c85ed5aa9798b83343459baa",
+    "cli.mjs": "7c537df2bd987ac6c4c366d18a04832e20eccb590ad4c421356330be8fc636ce",
     "codex-runtime/README.md": "580f69c73a435791e930342b390636af125b67c28d338819b28e67bd97677eb3",
-    "html-viewer/README.md": "1cbb9d00a9f847d1211765b6afde8b225b028222e6dbb60ee8b85eb88fa0be37",
-    "index.mjs": "2a94cd7dab41e5e6289bcf0e1dfa3837a23945f233efe5aeb1c50478aea50d96",
+    "html-viewer/README.md": "1ce44b592a7e05340f14de94949f15b398239e749a67059d938b1bd115c889db",
+    "index.mjs": "1d5516f36fb0bdb90221a15dca93eb6e32400621a578f949fc966a2b6e568abe",
     "README.md": "e1149a93c3e55d1d511444db84a3545082ec59cc3af7387802cf3af4d502c621",
-    "report/README.md": "0023e10cd931e55d647c023e1455fb48c350d97456b10615a82d62632376dc8b",
-    "run-review/README.md": "444ce663e32429fa5e2dd1ea22f24b35ee7db7f6a06ea0cc91b9b990cceb9c1c",
+    "report/README.md": "deabaa2bbe0ba4402f6c5f39c6e55dc7da2364de2d0214a7bcd7abce0b6c0077",
+    "run-review/README.md": "1edb65e01bc3017335e9f716c8caef931505cb1ca1e05661cc38950c2e432218",
     "runtimeRequirements.json": "d2d4257ac4bde4088807dc71c0193979ee675be1ed9718f4fe4d0e15d8912927",
     "viewer/index.html": "d55b888075182da9daa61711e781bcf094dbf44dd151ac2a42a27842ca1bfb1b",
     "viewer/report.schema.json": "c8c48f2e343dd2ecded754d520ef54d9e34daa336b8381749e8cb20e79c47d5d",
     "viewer/viewer.css": "c10c3206b1b30749391db6d76f34e52c529b7a0b033fcef8a0efa99f9821a9f9",
-    "viewer/viewer.js": "d539bca101a4982ee73823fdb0f124583aaa151000a478632d4c215a8417f631"
+    "viewer/viewer.js": "71839e034d93a4d43851e88267f762a577163c43c860c1c4fb4462ba61e36021"
   }
 }

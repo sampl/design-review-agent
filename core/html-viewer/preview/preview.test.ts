@@ -1,4 +1,5 @@
 // Keeps development scenarios aligned with the shared validation boundary.
+import { fixtureValue } from "../../report-format/fixtures/contract.ts";
 import { it } from "vitest";
 import assert from "node:assert/strict";
 import { validateReport } from "../../report-format/index.ts";
@@ -61,8 +62,14 @@ it("provides eight distinct investigation warnings without verified findings", (
 it("keeps visual and nonvisual evidence on separate findings in the visual preview", () => {
   const result = validateReport(previewReport("visual"));
   if (!result.valid) throw new Error("Expected valid visual preview");
-  assert.equal(result.report.issues[0].evidence.kind, "screenshot");
-  assert.equal(result.report.issues[1].evidence.kind, "nonvisual");
+  assert.equal(
+    fixtureValue(result.report.issues[0]).evidence.kind,
+    "screenshot",
+  );
+  assert.equal(
+    fixtureValue(result.report.issues[1]).evidence.kind,
+    "nonvisual",
+  );
 });
 
 it("previews GitHub actions only when a repository is authored", () => {

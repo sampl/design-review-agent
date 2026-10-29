@@ -1,11 +1,14 @@
 // Verifies issue-local screenshot ordering, boundaries, and keyboard intent.
 import { it } from "vitest";
 import assert from "node:assert/strict";
-import { completeReport } from "../../report-format/fixtures/contract.ts";
+import {
+  fixtureValue,
+  completeReport,
+} from "../../report-format/fixtures/contract.ts";
 import { issueImages, nextImageIndex, imageKeyDirection } from "./gallery.ts";
 it("collects Before then Proposed after and keeps nonvisual issues image-free", () => {
   const report = completeReport();
-  const issue = report.issues[0];
+  const issue = fixtureValue(report.issues[0]);
   assert.equal(issue.evidence.kind, "screenshot");
   if (issue.evidence.kind !== "screenshot") return;
   issue.evidence.proposedAfter = structuredClone(issue.evidence.before);
@@ -20,7 +23,7 @@ it("collects Before then Proposed after and keeps nonvisual issues image-free", 
   assert.deepEqual(issueImages(issue), [
     { label: "Before", capture: issue.evidence.before },
   ]);
-  assert.deepEqual(issueImages(report.issues[1]), []);
+  assert.deepEqual(issueImages(fixtureValue(report.issues[1])), []);
 });
 it("stops at the first and last images in both directions", () => {
   assert.equal(nextImageIndex(1, 2, 1), 1);
